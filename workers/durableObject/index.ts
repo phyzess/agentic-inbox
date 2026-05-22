@@ -1165,10 +1165,14 @@ export class MailboxDO extends DurableObject<Env> {
 			return false;
 		}
 
-		this.db
-			.delete(schema.folders)
-			.where(eq(schema.folders.id, id))
-			.run();
+		this.ctx.storage.transactionSync(() => {
+			this.ctx.storage.sql.exec(
+				`UPDATE emails SET folder_id = ?1 WHERE folder_id = ?2`,
+				Folders.INBOX,
+				id,
+			);
+			this.ctx.storage.sql.exec(`DELETE FROM folders WHERE id = ?1`, id);
+		});
 
 		return true;
 	}

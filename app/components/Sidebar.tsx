@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
+import { Badge, Button, Dialog, Input, Tooltip, useKumoToastManager } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
 	CaretLeftIcon,
@@ -18,7 +18,7 @@ import {
 import { useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
-import { useCreateFolder, useFolders } from "~/queries/folders";
+import { useCreateFolder, useDeleteFolder, useFolders } from "~/queries/folders";
 import { useLabels } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -76,11 +76,13 @@ function FolderLink({
 }
 
 export default function Sidebar() {
-	const { mailboxId } = useParams<{ mailboxId: string }>();
+	const { mailboxId, folder } = useParams<{ mailboxId: string; folder?: string }>();
 	const navigate = useNavigate();
+	const toastManager = useKumoToastManager();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const { data: labels = [] } = useLabels(mailboxId);
 	const createFolderMutation = useCreateFolder();
+	const deleteFolderMutation = useDeleteFolder();
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -104,6 +106,32 @@ export default function Sidebar() {
 			setNewFolderName("");
 			setIsCreateFolderOpen(false);
 		}
+	};
+
+	const handleDeleteFolder = (target: { id: string; name: string }) => {
+		if (!mailboxId) return;
+		const confirmed = window.confirm(
+			`Delete "${target.name}"? Emails in this folder will move back to Inbox.`,
+		);
+		if (!confirmed) return;
+
+		deleteFolderMutation.mutate(
+			{ mailboxId, id: target.id },
+			{
+				onSuccess: () => {
+					toastManager.add({ title: `Deleted ${target.name}` });
+					if (folder === target.id) {
+						navigate(`/mailbox/${mailboxId}/emails/${Folders.INBOX}`);
+					}
+				},
+				onError: () => {
+					toastManager.add({
+						title: `Failed to delete ${target.name}`,
+						variant: "error",
+					});
+				},
+			},
+		);
 	};
 
 	const displayName = useMemo(() => {
@@ -218,14 +246,29 @@ export default function Sidebar() {
 							</Tooltip>
 						</div>
 						{customFolders.map((folder) => (
-							<FolderLink
-								key={folder.id}
-								to={`/mailbox/${mailboxId}/emails/${folder.id}`}
-								icon={<FolderIcon size={18} />}
-								label={folder.name}
-								unreadCount={folder.unreadCount}
-								onClick={handleNavClick}
-							/>
+							<div key={folder.id} className="group flex items-center gap-1">
+								<div className="min-w-0 flex-1">
+									<FolderLink
+										to={`/mailbox/${mailboxId}/emails/${folder.id}`}
+										icon={<FolderIcon size={18} />}
+										label={folder.name}
+										unreadCount={folder.unreadCount}
+										onClick={handleNavClick}
+									/>
+								</div>
+								<Tooltip content="Delete folder" asChild>
+									<Button
+										variant="ghost"
+										shape="square"
+										size="sm"
+										icon={<TrashIcon size={15} />}
+										onClick={() => handleDeleteFolder(folder)}
+										disabled={deleteFolderMutation.isPending}
+										aria-label={`Delete ${folder.name}`}
+										className="shrink-0 text-kumo-subtle hover:text-kumo-error"
+									/>
+								</Tooltip>
+							</div>
 						))}
 					</div>
 				)}
