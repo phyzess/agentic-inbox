@@ -18,6 +18,7 @@ import {
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
+import { DEFAULT_AUTO_FILE_LABEL_IDS, DEFAULT_SMART_LABEL_IDS } from "../shared/labels";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 
@@ -82,6 +83,8 @@ function boolQuery(c: AppContext, key: string): boolean | undefined {
 type ClassificationSettings = {
 	enabled?: boolean;
 	autoDraftAfterClassify?: boolean;
+	autoFileAfterClassify?: boolean;
+	autoFileLabels?: string[];
 	lowConfidenceThreshold?: number;
 };
 
@@ -96,9 +99,18 @@ function classificationSettings(settings: Record<string, unknown>): Required<Cla
 	const threshold = typeof raw.lowConfidenceThreshold === "number"
 		? raw.lowConfidenceThreshold
 		: 0.55;
+	const labels = Array.isArray(raw.autoFileLabels)
+		? raw.autoFileLabels
+		: [...DEFAULT_AUTO_FILE_LABEL_IDS];
+	const autoFileLabels = labels.filter((label): label is string =>
+		typeof label === "string" &&
+		(DEFAULT_SMART_LABEL_IDS as readonly string[]).includes(label),
+	);
 	return {
 		enabled: raw.enabled !== false,
 		autoDraftAfterClassify: raw.autoDraftAfterClassify === true,
+		autoFileAfterClassify: raw.autoFileAfterClassify === true,
+		autoFileLabels,
 		lowConfidenceThreshold: Math.max(0, Math.min(1, threshold)),
 	};
 }
@@ -153,11 +165,13 @@ app.post("/api/v1/mailboxes", async (c) => {
 		forwarding: { enabled: false, email: "" },
 		signature: { enabled: false, text: "" },
 		autoReply: { enabled: false, subject: "", message: "" },
-		classification: {
-			enabled: true,
-			autoDraftAfterClassify: false,
-			lowConfidenceThreshold: 0.55,
-		},
+			classification: {
+				enabled: true,
+				autoDraftAfterClassify: false,
+				autoFileAfterClassify: false,
+				autoFileLabels: [...DEFAULT_AUTO_FILE_LABEL_IDS],
+				lowConfidenceThreshold: 0.55,
+			},
 	};
 	const finalSettings = { ...defaultSettings, ...settings };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
@@ -375,7 +389,14 @@ app.get("/api/v1/mailboxes/:mailboxId/triage/status", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/classify", async (c: AppContext) => {
 	const { force } = ClassifyBody.parse(await c.req.json().catch(() => ({})));
-	const result = await (c.var.mailboxStub as any).classifyEmail(c.req.param("id")!, { force: force ?? true });
+	const settings = await getMailboxSettings(c.env, c.req.param("mailboxId")!);
+	const triage = classificationSettings(settings);
+	const result = await (c.var.mailboxStub as any).classifyEmail(c.req.param("id")!, {
+		force: force ?? true,
+		lowConfidenceThreshold: triage.lowConfidenceThreshold,
+		autoFileAfterClassify: triage.autoFileAfterClassify,
+		autoFileLabels: triage.autoFileLabels,
+	});
 	return "error" in result ? c.json(result, 404) : c.json(result);
 });
 
@@ -394,11 +415,18 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/suggest-rule", async (c: AppCo
 app.post("/api/v1/mailboxes/:mailboxId/triage/backfill", async (c: AppContext) => {
 	const { folder, limit, page, force } = BackfillBody.parse(await c.req.json().catch(() => ({})));
 	const stub = c.var.mailboxStub as any;
+	const settings = await getMailboxSettings(c.env, c.req.param("mailboxId")!);
+	const triage = classificationSettings(settings);
 	const emailIds = await stub.getEmailsForClassification({ folder, limit, page, force });
 	c.executionCtx.waitUntil(
 		Promise.all(
 			emailIds.map((id: string) =>
-				stub.classifyEmail(id, { force: force ?? false }).catch((e: Error) =>
+				stub.classifyEmail(id, {
+					force: force ?? false,
+					lowConfidenceThreshold: triage.lowConfidenceThreshold,
+					autoFileAfterClassify: triage.autoFileAfterClassify,
+					autoFileLabels: triage.autoFileLabels,
+				}).catch((e: Error) =>
 					console.error("Backfill classification failed:", id, e.message),
 				),
 			),
@@ -548,6 +576,8 @@ async function receiveEmail(event: IncomingEmailMessage, env: Env, ctx: Executio
 		if (triage.enabled) {
 			await (stub as any).classifyEmail(messageId, {
 				lowConfidenceThreshold: triage.lowConfidenceThreshold,
+				autoFileAfterClassify: triage.autoFileAfterClassify,
+				autoFileLabels: triage.autoFileLabels,
 			}).catch((e: Error) =>
 				console.error("Inbound classification failed:", e.message),
 			);

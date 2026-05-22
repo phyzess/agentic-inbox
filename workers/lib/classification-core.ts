@@ -71,6 +71,65 @@ export function senderDomain(sender: string | null | undefined): string | null {
 	return domain || null;
 }
 
+function senderLocalPart(sender: string | null | undefined): string {
+	return sender?.toLowerCase().split("@")[0]?.trim() ?? "";
+}
+
+function includesAny(haystack: string, needles: readonly string[]): boolean {
+	return needles.some((needle) => haystack.includes(needle));
+}
+
+export function classifyByHeuristic(email: EmailForRules): ClassificationChoice | null {
+	const sender = email.sender?.toLowerCase() ?? "";
+	const domain = senderDomain(email.sender);
+	const localPart = senderLocalPart(email.sender);
+	const subject = email.subject?.toLowerCase() ?? "";
+	const headers = email.raw_headers?.toLowerCase() ?? "";
+	const text = `${sender}\n${subject}\n${headers}`;
+
+	if (
+		domain === "github.com" && localPart === "notifications" ||
+		includesAny(text, [
+			"x-github-",
+			"github pull request",
+			"cloudflare-workers-and-pages[bot]",
+			"workflow run",
+			"run failed:",
+			"pr run failed:",
+		])
+	) {
+		return {
+			labelId: "notification",
+			confidence: 0.98,
+			reason: "Matched a GitHub or CI notification pattern.",
+		};
+	}
+
+	if (
+		includesAny(localPart, ["notification", "notifications", "alert", "alerts"]) ||
+		includesAny(headers, ["auto-submitted:", "x-auto-response-suppress:"])
+	) {
+		return {
+			labelId: "notification",
+			confidence: 0.9,
+			reason: "Matched an automated notification sender or header.",
+		};
+	}
+
+	if (
+		includesAny(text, ["list-unsubscribe", "newsletter", "digest"]) ||
+		includesAny(localPart, ["newsletter", "digest", "updates"])
+	) {
+		return {
+			labelId: "newsletter",
+			confidence: 0.88,
+			reason: "Matched a newsletter or digest pattern.",
+		};
+	}
+
+	return null;
+}
+
 export function buildSuggestedSenderDomainRule(
 	email: EmailForRules,
 	labelId: string,
@@ -143,17 +202,22 @@ export function buildClassificationPrompt(input: {
 }) {
 	return `Classify this email into exactly one smart label.
 
-Labels:
-- action_needed: needs a reply, decision, or concrete follow-up from the mailbox owner
-- waiting: the mailbox owner is waiting for someone else to respond or act
-- newsletter: recurring editorial, digest, marketing, or list email
-- notification: automated product, account, or workflow notification
-- transaction: receipt, invoice, shipping, payment, or account transaction
-- personal: human personal or relationship-oriented message
-- low_priority: safe to read later; low urgency and low consequence
+	Labels:
+	- action_needed: needs a reply, decision, or concrete follow-up from the mailbox owner
+	- waiting: the mailbox owner is waiting for someone else to respond or act
+	- newsletter: recurring editorial, digest, marketing, or list email
+	- notification: automated product, account, or workflow notification
+	- transaction: receipt, invoice, shipping, payment, or account transaction
+	- personal: human personal or relationship-oriented message
+	- low_priority: safe to read later; use only when no stronger label fits
 
-Return only JSON with this shape:
-{"labelId":"one_label_id","confidence":0.0,"reason":"short explanation"}
+	Rules:
+	- GitHub, CI, build, workflow, account, product, and bot status emails are notification, even when they are low urgency.
+	- Newsletters, digests, courses, and marketing/list mail are newsletter, not low_priority.
+	- Only choose low_priority for mail that is neither a notification, newsletter, transaction, personal message, action request, nor waiting thread.
+
+	Return only JSON with this shape:
+	{"labelId":"one_label_id","confidence":0.0,"reason":"short explanation"}
 
 Email:
 From: ${input.sender || "(unknown)"}

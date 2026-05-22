@@ -53,6 +53,12 @@ export const DEFAULT_SMART_LABEL_IDS = DEFAULT_SMART_LABELS.map(
 	(label) => label.id,
 ) as readonly SmartLabelId[];
 
+export const DEFAULT_AUTO_FILE_LABEL_IDS = [
+	"notification",
+	"newsletter",
+	"low_priority",
+] as const satisfies readonly SmartLabelId[];
+
 export function getSmartLabelName(labelId: string): string {
 	return (
 		DEFAULT_SMART_LABELS.find((label) => label.id === labelId)?.name ??

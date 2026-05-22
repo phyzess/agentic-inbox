@@ -17,6 +17,8 @@ export interface MailboxSettings {
 	classification?: {
 		enabled?: boolean;
 		autoDraftAfterClassify?: boolean;
+		autoFileAfterClassify?: boolean;
+		autoFileLabels?: string[];
 		lowConfidenceThreshold?: number;
 	};
 }

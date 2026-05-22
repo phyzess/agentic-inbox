@@ -12,6 +12,7 @@ import { stripHtmlToText } from "../lib/email-helpers";
 import {
 	buildClassificationPrompt,
 	buildSuggestedSenderDomainRule,
+	classifyByHeuristic,
 	parseClassificationResponse,
 	ruleMatchesEmail,
 	type ClassificationChoice,
@@ -123,6 +124,12 @@ interface EmailLabelRow {
 }
 
 type ClassificationStatus = "unclassified" | "processing" | "classified" | "error";
+type ClassifyEmailOptions = {
+	force?: boolean;
+	lowConfidenceThreshold?: number;
+	autoFileAfterClassify?: boolean;
+	autoFileLabels?: string[];
+};
 
 export class MailboxDO extends DurableObject<Env> {
 	declare __DURABLE_OBJECT_BRAND: never;
@@ -314,6 +321,77 @@ export class MailboxDO extends DurableObject<Env> {
 		return this.getClassification(emailId);
 	}
 
+	#ensureFolderForLabel(labelId: string): string | null {
+		const label = [
+			...this.ctx.storage.sql.exec(
+				`SELECT id, name FROM labels WHERE id = ?1`,
+				labelId,
+			),
+		][0] as { id: string; name: string } | undefined;
+		if (!label) return null;
+
+		const existing = [
+			...this.ctx.storage.sql.exec(
+				`SELECT id FROM folders
+				 WHERE id = ?1 OR lower(name) = lower(?2)
+				 LIMIT 1`,
+				label.id,
+				label.name,
+			),
+		][0] as { id: string } | undefined;
+		if (existing) return existing.id;
+
+		this.ctx.storage.sql.exec(
+			`INSERT OR IGNORE INTO folders (id, name, is_deletable)
+			 VALUES (?1, ?2, 1)`,
+			label.id,
+			label.name,
+		);
+		return label.id;
+	}
+
+	#autoFileEmail(emailId: string, labelId: string, options: ClassifyEmailOptions) {
+		if (!options.autoFileAfterClassify) return;
+		if (!options.autoFileLabels?.includes(labelId)) return;
+
+		const email = [
+			...this.ctx.storage.sql.exec(
+				`SELECT folder_id FROM emails WHERE id = ?1`,
+				emailId,
+			),
+		][0] as { folder_id: string } | undefined;
+		if (!email || email.folder_id !== Folders.INBOX) return;
+
+		const folderId = this.#ensureFolderForLabel(labelId);
+		if (!folderId || folderId === email.folder_id) return;
+
+		this.ctx.storage.sql.exec(
+			`UPDATE emails SET folder_id = ?2
+			 WHERE id = ?1 AND folder_id = ?3`,
+			emailId,
+			folderId,
+			Folders.INBOX,
+		);
+		console.log(`AI triage auto-filed ${emailId} to ${folderId}`);
+	}
+
+	async #applyClassificationChoice(
+		emailId: string,
+		choice: ClassificationChoice,
+		source: "ai" | "rule",
+		options: ClassifyEmailOptions,
+	) {
+		const result = await this.applyEmailLabel(emailId, choice.labelId, {
+			source,
+			confidence: choice.confidence,
+			reason: choice.reason,
+		});
+		if (!("error" in result)) {
+			this.#autoFileEmail(emailId, choice.labelId, options);
+		}
+		return result;
+	}
+
 	async #matchingActiveRule(email: EmailForRules) {
 		const rows = [
 			...this.ctx.storage.sql.exec(
@@ -355,7 +433,7 @@ export class MailboxDO extends DurableObject<Env> {
 		return parseClassificationResponse(response?.response ?? "");
 	}
 
-	async classifyEmail(emailId: string, options: { force?: boolean; lowConfidenceThreshold?: number } = {}) {
+	async classifyEmail(emailId: string, options: ClassifyEmailOptions = {}) {
 		if (!options.force) {
 			const current = await this.getClassification(emailId);
 			if (current.status === "classified" && current.labels.length > 0) {
@@ -376,11 +454,26 @@ export class MailboxDO extends DurableObject<Env> {
 				console.log(
 					`AI triage rule hit: ${activeRule.id} -> ${activeRule.label_id}`,
 				);
-				return this.applyEmailLabel(emailId, activeRule.label_id, {
-					source: "rule",
-					confidence: 1,
-					reason: `Matched ${activeRule.field} ${activeRule.operator} ${activeRule.value}.`,
-				});
+				return this.#applyClassificationChoice(
+					emailId,
+					{
+						labelId: activeRule.label_id,
+						confidence: 1,
+						reason: `Matched ${activeRule.field} ${activeRule.operator} ${activeRule.value}.`,
+					},
+					"rule",
+					options,
+				);
+			}
+
+			const heuristicChoice = classifyByHeuristic(email);
+			if (heuristicChoice) {
+				return this.#applyClassificationChoice(
+					emailId,
+					heuristicChoice,
+					"rule",
+					options,
+				);
 			}
 
 			const choice = await this.#runAiClassification(email);
@@ -393,11 +486,7 @@ export class MailboxDO extends DurableObject<Env> {
 					`Low-confidence email classification for ${emailId}: ${choice.labelId} (${choice.confidence})`,
 				);
 			}
-			return this.applyEmailLabel(emailId, choice.labelId, {
-				source: "ai",
-				confidence: choice.confidence,
-				reason: choice.reason,
-			});
+			return this.#applyClassificationChoice(emailId, choice, "ai", options);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : "Classification failed";
 			console.error("Email classification failed:", emailId, message);
