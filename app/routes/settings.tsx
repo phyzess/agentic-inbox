@@ -6,7 +6,8 @@ import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/k
 import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
-import { useBackfillTriage, useTriageStatus } from "~/queries/labels";
+import { DEFAULT_AUTO_FILE_LABEL_IDS, DEFAULT_SMART_LABELS } from "shared/labels";
+import { useBackfillTriage, useLabels, useTriageStatus } from "~/queries/labels";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 
 // Placeholder shown in the textarea when no custom prompt is set.
@@ -19,6 +20,7 @@ export default function SettingsRoute() {
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 	const backfillTriage = useBackfillTriage();
+	const { data: labels = [] } = useLabels(mailboxId);
 	const {
 		data: triageStatus,
 		refetch: refetchTriageStatus,
@@ -28,6 +30,10 @@ export default function SettingsRoute() {
 	const [agentPrompt, setAgentPrompt] = useState("");
 	const [classificationEnabled, setClassificationEnabled] = useState(true);
 	const [autoDraftAfterClassify, setAutoDraftAfterClassify] = useState(false);
+	const [autoFileAfterClassify, setAutoFileAfterClassify] = useState(false);
+	const [autoFileLabels, setAutoFileLabels] = useState<string[]>([
+		...DEFAULT_AUTO_FILE_LABEL_IDS,
+	]);
 	const [lowConfidenceThreshold, setLowConfidenceThreshold] = useState(0.55);
 	const [isSaving, setIsSaving] = useState(false);
 
@@ -38,6 +44,16 @@ export default function SettingsRoute() {
 			setClassificationEnabled(mailbox.settings?.classification?.enabled !== false);
 			setAutoDraftAfterClassify(
 				mailbox.settings?.classification?.autoDraftAfterClassify === true,
+			);
+			setAutoFileAfterClassify(
+				mailbox.settings?.classification?.autoFileAfterClassify === true,
+			);
+			const savedAutoFileLabels =
+				mailbox.settings?.classification?.autoFileLabels;
+			setAutoFileLabels(
+				savedAutoFileLabels?.length
+					? savedAutoFileLabels
+					: [...DEFAULT_AUTO_FILE_LABEL_IDS],
 			);
 			setLowConfidenceThreshold(
 				mailbox.settings?.classification?.lowConfidenceThreshold ?? 0.55,
@@ -55,6 +71,8 @@ export default function SettingsRoute() {
 			classification: {
 				enabled: classificationEnabled,
 				autoDraftAfterClassify,
+				autoFileAfterClassify,
+				autoFileLabels,
 				lowConfidenceThreshold,
 			},
 		};
@@ -82,6 +100,17 @@ export default function SettingsRoute() {
 		{ label: "Failed", value: triageStatus?.error },
 		{ label: "Unclassified", value: triageStatus?.unclassified },
 	];
+	const autoFileChoices = labels.length > 0
+		? labels.filter((label) => label.isSystem)
+		: [...DEFAULT_SMART_LABELS];
+
+	const toggleAutoFileLabel = (labelId: string) => {
+		setAutoFileLabels((current) =>
+			current.includes(labelId)
+				? current.filter((id) => id !== labelId)
+				: [...current, labelId],
+		);
+	};
 
 	if (!mailbox) {
 		return (
@@ -179,6 +208,33 @@ export default function SettingsRoute() {
 							/>
 							Auto-draft replies after classification
 						</label>
+						<label className="flex items-center gap-2 text-sm text-kumo-default">
+							<input
+								type="checkbox"
+								checked={autoFileAfterClassify}
+								onChange={(event) =>
+									setAutoFileAfterClassify(event.target.checked)
+								}
+							/>
+							Move selected labels to folders
+						</label>
+						{autoFileAfterClassify && (
+							<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+								{autoFileChoices.map((label) => (
+									<label
+										key={label.id}
+										className="flex items-center gap-2 rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2 text-xs text-kumo-default"
+									>
+										<input
+											type="checkbox"
+											checked={autoFileLabels.includes(label.id)}
+											onChange={() => toggleAutoFileLabel(label.id)}
+										/>
+										<span className="truncate">{label.name}</span>
+									</label>
+								))}
+							</div>
+						)}
 						<label className="block text-sm text-kumo-default">
 							<span className="mb-1 block text-xs font-medium text-kumo-subtle">
 								Low-confidence threshold
@@ -215,7 +271,7 @@ export default function SettingsRoute() {
 								</div>
 							))}
 						</div>
-						<div className="flex items-center gap-2 pt-2">
+						<div className="flex flex-wrap items-center gap-2 pt-2">
 							<Button
 								variant="secondary"
 								size="sm"
@@ -236,6 +292,26 @@ export default function SettingsRoute() {
 								Classify existing mail
 							</Button>
 							<Button
+								variant="secondary"
+								size="sm"
+								onClick={async () => {
+									if (!mailboxId) return;
+									const result = await backfillTriage.mutateAsync({
+										mailboxId,
+										limit: 50,
+										force: true,
+									});
+									toastManager.add({
+										title: `Queued ${result.queued} emails for reclassification`,
+									});
+									void refetchTriageStatus();
+									window.setTimeout(() => void refetchTriageStatus(), 5_000);
+								}}
+								loading={backfillTriage.isPending}
+							>
+								Reclassify latest 50
+							</Button>
+							<Button
 								variant="ghost"
 								size="sm"
 								icon={<ArrowCounterClockwiseIcon size={14} />}
@@ -244,7 +320,7 @@ export default function SettingsRoute() {
 								Refresh
 							</Button>
 							<span className="text-xs text-kumo-subtle">
-								Labels only; emails stay in their current folders.
+								Labels stay attached; auto-file only moves Inbox mail.
 							</span>
 						</div>
 					</div>

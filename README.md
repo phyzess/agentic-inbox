@@ -42,7 +42,7 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 - **Built-in AI agent** — Side panel with email and triage tools for reading, searching, classifying, drafting, and sending
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
-- **Smart classification** — Incoming mail is labeled with AI triage labels such as Action needed, Waiting, Newsletter, Notification, Transaction, Personal, and Low priority. V1 only applies labels; it does not move, archive, mark read, or send email automatically.
+- **Smart classification** — Incoming mail is labeled with AI triage labels such as Action needed, Waiting, Newsletter, Notification, Transaction, Personal, and Low priority. Mail can optionally be auto-filed into matching label folders after classification.
 - **Correctable triage rules** — Manual label corrections are recorded and can create suggested sender/domain rules that remain inactive until you confirm them.
 
 ## Stack
@@ -82,7 +82,7 @@ Any user who passes the shared Cloudflare Access policy can access all mailboxes
 
 ## Smart classification safety
 
-Smart classification runs in the background after an inbound email is stored. If classification fails, the email remains in Inbox and can be retried from the UI. By default, classification only adds labels and explanations. Auto-drafting after classification is off by default and can be enabled per mailbox in Settings.
+Smart classification runs in the background after an inbound email is stored. If classification fails, the email remains in Inbox and can be retried from the UI. By default, classification only adds labels and explanations. Auto-drafting and auto-filing after classification are off by default and can be enabled per mailbox in Settings. Auto-filing only moves Inbox mail for the labels selected in Settings; it does not send, delete, or mark mail read.
 
 ## Architecture
 

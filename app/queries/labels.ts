@@ -9,6 +9,7 @@ import { queryKeys } from "./keys";
 
 function invalidateTriage(qc: ReturnType<typeof useQueryClient>, mailboxId: string) {
 	qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+	qc.invalidateQueries({ queryKey: queryKeys.folders.list(mailboxId) });
 	qc.invalidateQueries({ queryKey: queryKeys.labels.list(mailboxId) });
 	qc.invalidateQueries({ queryKey: queryKeys.rules.list(mailboxId) });
 	qc.invalidateQueries({ queryKey: queryKeys.triage.status(mailboxId) });
