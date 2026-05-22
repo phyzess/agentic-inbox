@@ -59,6 +59,11 @@ const BackfillBody = z.object({
 	force: z.boolean().optional(),
 });
 
+const BulkLabelBody = z.object({
+	labelId: z.string().min(1),
+	limit: z.number().min(1).max(100).optional(),
+});
+
 // -- Helpers --------------------------------------------------------
 
 function slugify(text: string) { // can return "" for non-alphanumeric input
@@ -387,6 +392,15 @@ app.get("/api/v1/mailboxes/:mailboxId/triage/status", async (c: AppContext) => {
 	return c.json(await (c.var.mailboxStub as any).getClassificationStatus());
 });
 
+app.get("/api/v1/mailboxes/:mailboxId/triage/activity", async (c: AppContext) => {
+	return c.json(await (c.var.mailboxStub as any).listTriageEvents(intQuery(c, "limit")));
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/triage/activity/:id/undo", async (c: AppContext) => {
+	const result = await (c.var.mailboxStub as any).undoTriageEvent(c.req.param("id")!);
+	return result && "error" in result ? c.json(result, 400) : c.json(result);
+});
+
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/classify", async (c: AppContext) => {
 	const { force } = ClassifyBody.parse(await c.req.json().catch(() => ({})));
 	const settings = await getMailboxSettings(c.env, c.req.param("mailboxId")!);
@@ -433,6 +447,18 @@ app.post("/api/v1/mailboxes/:mailboxId/triage/backfill", async (c: AppContext) =
 		).then(() => undefined),
 	);
 	return c.json({ status: "queued", queued: emailIds.length, emailIds });
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/triage/bulk/file-label", async (c: AppContext) => {
+	const { labelId, limit } = BulkLabelBody.parse(await c.req.json());
+	const result = await (c.var.mailboxStub as any).bulkFileLabel(labelId, limit);
+	return "error" in result ? c.json(result, 400) : c.json(result);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/triage/bulk/mark-read", async (c: AppContext) => {
+	const { labelId, limit } = BulkLabelBody.parse(await c.req.json());
+	const result = await (c.var.mailboxStub as any).bulkMarkLabelRead(labelId, limit);
+	return "error" in result ? c.json(result, 400) : c.json(result);
 });
 
 // -- Search ---------------------------------------------------------

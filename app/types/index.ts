@@ -110,6 +110,24 @@ export interface TriageStatus {
 	unclassified: number;
 }
 
+export interface TriageEvent {
+	id: string;
+	emailId: string;
+	action: "move" | "mark_read" | string;
+	source: string;
+	labelId?: string | null;
+	labelName?: string | null;
+	labelColor?: string | null;
+	fromFolderId?: string | null;
+	fromFolderName?: string | null;
+	toFolderId?: string | null;
+	toFolderName?: string | null;
+	subject?: string | null;
+	sender?: string | null;
+	createdAt?: string | null;
+	undoneAt?: string | null;
+}
+
 export interface ClassificationRule {
 	id: string;
 	label_id: string;

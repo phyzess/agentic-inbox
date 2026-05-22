@@ -114,3 +114,23 @@ export const classificationRules = sqliteTable("classification_rules", {
 	created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
 	updated_at: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
 });
+
+export const triageEvents = sqliteTable("triage_events", {
+	id: text("id").primaryKey(),
+	email_id: text("email_id")
+		.notNull()
+		.references(() => emails.id, { onDelete: "cascade" }),
+	action: text("action").notNull(),
+	source: text("source").notNull(),
+	label_id: text("label_id").references(() => labels.id, {
+		onDelete: "set null",
+	}),
+	from_folder_id: text("from_folder_id").references(() => folders.id, {
+		onDelete: "set null",
+	}),
+	to_folder_id: text("to_folder_id").references(() => folders.id, {
+		onDelete: "set null",
+	}),
+	created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+	undone_at: text("undone_at"),
+});

@@ -44,6 +44,7 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 - **Smart classification** — Incoming mail is labeled with AI triage labels such as Action needed, Waiting, Newsletter, Notification, Transaction, Personal, and Low priority. Mail can optionally be auto-filed into matching label folders after classification.
 - **Correctable triage rules** — Manual label corrections are recorded and can create suggested sender/domain rules that remain inactive until you confirm them.
+- **Triage control center** — Settings includes rule confirmation, bulk filing/mark-read actions, recent triage activity, and undo for recorded auto-file moves.
 
 ## Stack
 

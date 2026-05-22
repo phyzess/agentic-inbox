@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { ClassificationResult, ClassificationRule, Email, Folder, Label, Mailbox, TriageStatus } from "~/types";
+import type { ClassificationResult, ClassificationRule, Email, Folder, Label, Mailbox, TriageEvent, TriageStatus } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -131,6 +131,12 @@ const api = {
 		get<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/classification`),
 	getTriageStatus: (mailboxId: string) =>
 		get<TriageStatus>(`/api/v1/mailboxes/${mailboxId}/triage/status`),
+	listTriageActivity: (mailboxId: string, limit = 25) =>
+		get<TriageEvent[]>(`/api/v1/mailboxes/${mailboxId}/triage/activity`, {
+			params: { limit: String(limit) },
+		}),
+	undoTriageActivity: (mailboxId: string, eventId: string) =>
+		post<TriageEvent>(`/api/v1/mailboxes/${mailboxId}/triage/activity/${eventId}/undo`),
 	suggestRule: (mailboxId: string, id: string, labelId?: string) =>
 		post<ClassificationRule>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/suggest-rule`, { labelId }),
 	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>
@@ -183,6 +189,16 @@ const api = {
 		`/api/v1/mailboxes/${mailboxId}/triage/backfill`,
 		body,
 	),
+	bulkFileLabel: (mailboxId: string, labelId: string, limit = 100) =>
+		post<{ labelId: string; folderId: string; moved: number; emailIds: string[] }>(
+			`/api/v1/mailboxes/${mailboxId}/triage/bulk/file-label`,
+			{ labelId, limit },
+		),
+	bulkMarkLabelRead: (mailboxId: string, labelId: string, limit = 100) =>
+		post<{ labelId: string; markedRead: number; emailIds: string[] }>(
+			`/api/v1/mailboxes/${mailboxId}/triage/bulk/mark-read`,
+			{ labelId, limit },
+		),
 
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>
