@@ -27,6 +27,7 @@ export const queryKeys = {
 	},
 	triage: {
 		status: (mailboxId: string) => ["triage", mailboxId, "status"] as const,
+		activity: (mailboxId: string) => ["triage", mailboxId, "activity"] as const,
 	},
 	search: {
 		results: (mailboxId: string, query: string, page: number) =>

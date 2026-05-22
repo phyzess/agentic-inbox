@@ -7,12 +7,34 @@ import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { DEFAULT_AUTO_FILE_LABEL_IDS, DEFAULT_SMART_LABELS } from "shared/labels";
-import { useBackfillTriage, useLabels, useTriageStatus } from "~/queries/labels";
+import {
+	useBackfillTriage,
+	useBulkFileLabel,
+	useBulkMarkLabelRead,
+	useConfirmRule,
+	useDisableRule,
+	useLabels,
+	useRules,
+	useTriageActivity,
+	useTriageStatus,
+	useUndoTriageActivity,
+} from "~/queries/labels";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 
 // Placeholder shown in the textarea when no custom prompt is set.
 // The authoritative default prompt lives in workers/agent/index.ts (DEFAULT_SYSTEM_PROMPT).
 const PROMPT_PLACEHOLDER = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.\n\nWrite like a real person. Short, direct, flowing prose. Plain text only.\n\n(Leave empty to use the full built-in default prompt)`;
+
+function formatActivityDate(value?: string | null) {
+	if (!value) return "";
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return "";
+	return date.toLocaleString();
+}
+
+function humanizeEventSource(source: string) {
+	return source.replaceAll("_", " ");
+}
 
 export default function SettingsRoute() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
@@ -20,7 +42,14 @@ export default function SettingsRoute() {
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 	const backfillTriage = useBackfillTriage();
+	const confirmRule = useConfirmRule();
+	const disableRule = useDisableRule();
+	const bulkFileLabel = useBulkFileLabel();
+	const bulkMarkLabelRead = useBulkMarkLabelRead();
+	const undoTriageActivity = useUndoTriageActivity();
 	const { data: labels = [] } = useLabels(mailboxId);
+	const { data: rules = [] } = useRules(mailboxId);
+	const { data: activity = [] } = useTriageActivity(mailboxId);
 	const {
 		data: triageStatus,
 		refetch: refetchTriageStatus,
@@ -34,6 +63,9 @@ export default function SettingsRoute() {
 	const [autoFileLabels, setAutoFileLabels] = useState<string[]>([
 		...DEFAULT_AUTO_FILE_LABEL_IDS,
 	]);
+	const [bulkLabelId, setBulkLabelId] = useState<string>(
+		DEFAULT_AUTO_FILE_LABEL_IDS[0] ?? "notification",
+	);
 	const [lowConfidenceThreshold, setLowConfidenceThreshold] = useState(0.55);
 	const [isSaving, setIsSaving] = useState(false);
 
@@ -103,6 +135,12 @@ export default function SettingsRoute() {
 	const autoFileChoices = labels.length > 0
 		? labels.filter((label) => label.isSystem)
 		: [...DEFAULT_SMART_LABELS];
+	const selectedBulkLabelId = autoFileChoices.some((label) => label.id === bulkLabelId)
+		? bulkLabelId
+		: autoFileChoices[0]?.id ?? "";
+	const selectedBulkLabel = autoFileChoices.find((label) => label.id === selectedBulkLabelId);
+	const visibleRules = rules.slice(0, 8);
+	const recentActivity = activity.slice(0, 10);
 
 	const toggleAutoFileLabel = (labelId: string) => {
 		setAutoFileLabels((current) =>
@@ -110,6 +148,68 @@ export default function SettingsRoute() {
 				? current.filter((id) => id !== labelId)
 				: [...current, labelId],
 		);
+	};
+
+	const handleConfirmRule = async (ruleId: string) => {
+		if (!mailboxId) return;
+		try {
+			await confirmRule.mutateAsync({ mailboxId, ruleId });
+			toastManager.add({ title: "Rule confirmed" });
+		} catch {
+			toastManager.add({ title: "Failed to confirm rule", variant: "error" });
+		}
+	};
+
+	const handleDisableRule = async (ruleId: string) => {
+		if (!mailboxId) return;
+		try {
+			await disableRule.mutateAsync({ mailboxId, ruleId });
+			toastManager.add({ title: "Rule disabled" });
+		} catch {
+			toastManager.add({ title: "Failed to disable rule", variant: "error" });
+		}
+	};
+
+	const handleBulkFile = async () => {
+		if (!mailboxId || !selectedBulkLabelId) return;
+		try {
+			const result = await bulkFileLabel.mutateAsync({
+				mailboxId,
+				labelId: selectedBulkLabelId,
+				limit: 100,
+			});
+			toastManager.add({
+				title: `Moved ${result.moved} ${selectedBulkLabel?.name ?? "labeled"} emails`,
+			});
+		} catch {
+			toastManager.add({ title: "Failed to move labeled emails", variant: "error" });
+		}
+	};
+
+	const handleBulkMarkRead = async () => {
+		if (!mailboxId || !selectedBulkLabelId) return;
+		try {
+			const result = await bulkMarkLabelRead.mutateAsync({
+				mailboxId,
+				labelId: selectedBulkLabelId,
+				limit: 100,
+			});
+			toastManager.add({
+				title: `Marked ${result.markedRead} ${selectedBulkLabel?.name ?? "labeled"} emails read`,
+			});
+		} catch {
+			toastManager.add({ title: "Failed to mark emails read", variant: "error" });
+		}
+	};
+
+	const handleUndoActivity = async (eventId: string) => {
+		if (!mailboxId) return;
+		try {
+			await undoTriageActivity.mutateAsync({ mailboxId, eventId });
+			toastManager.add({ title: "Move undone" });
+		} catch {
+			toastManager.add({ title: "Failed to undo move", variant: "error" });
+		}
 	};
 
 	if (!mailbox) {
@@ -324,6 +424,155 @@ export default function SettingsRoute() {
 							</span>
 						</div>
 					</div>
+				</div>
+
+				{/* Rules */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="text-sm font-medium text-kumo-default mb-4">
+						Rules
+					</div>
+					{visibleRules.length === 0 ? (
+						<div className="rounded-md border border-dashed border-kumo-line px-3 py-4 text-sm text-kumo-subtle">
+							No suggested rules yet.
+						</div>
+					) : (
+						<div className="divide-y divide-kumo-line rounded-md border border-kumo-line">
+							{visibleRules.map((rule) => (
+								<div
+									key={rule.id}
+									className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+								>
+									<div className="min-w-0">
+										<div className="flex flex-wrap items-center gap-2 text-sm text-kumo-default">
+											<span className="truncate font-medium">
+												{rule.label_name ?? rule.label_id}
+											</span>
+											<Badge variant={rule.status === "active" ? "primary" : "secondary"}>
+												{rule.status}
+											</Badge>
+										</div>
+										<div className="mt-1 truncate text-xs text-kumo-subtle">
+											{rule.field} {rule.operator} {rule.value}
+										</div>
+									</div>
+									<div className="flex shrink-0 items-center gap-2">
+										{rule.status !== "active" && (
+											<Button
+												variant="secondary"
+												size="xs"
+												onClick={() => void handleConfirmRule(rule.id)}
+												loading={confirmRule.isPending}
+											>
+												Confirm
+											</Button>
+										)}
+										{rule.status !== "disabled" && (
+											<Button
+												variant="ghost"
+												size="xs"
+												onClick={() => void handleDisableRule(rule.id)}
+												loading={disableRule.isPending}
+											>
+												Disable
+											</Button>
+										)}
+									</div>
+								</div>
+							))}
+						</div>
+					)}
+				</div>
+
+				{/* Bulk triage */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="text-sm font-medium text-kumo-default mb-4">
+						Bulk Triage
+					</div>
+					<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+						<select
+							value={selectedBulkLabelId}
+							onChange={(event) => setBulkLabelId(event.target.value)}
+							className="h-9 rounded-md border border-kumo-line bg-kumo-base px-3 text-sm text-kumo-default"
+						>
+							{autoFileChoices.map((label) => (
+								<option key={label.id} value={label.id}>
+									{label.name}
+								</option>
+							))}
+						</select>
+						<div className="flex flex-wrap items-center gap-2">
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => void handleBulkFile()}
+								loading={bulkFileLabel.isPending}
+								disabled={!selectedBulkLabelId}
+							>
+								Move latest 100
+							</Button>
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => void handleBulkMarkRead()}
+								loading={bulkMarkLabelRead.isPending}
+								disabled={!selectedBulkLabelId}
+							>
+								Mark latest 100 read
+							</Button>
+						</div>
+					</div>
+				</div>
+
+				{/* Activity */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="text-sm font-medium text-kumo-default mb-4">
+						Activity
+					</div>
+					{recentActivity.length === 0 ? (
+						<div className="rounded-md border border-dashed border-kumo-line px-3 py-4 text-sm text-kumo-subtle">
+							No triage activity yet.
+						</div>
+					) : (
+						<div className="divide-y divide-kumo-line rounded-md border border-kumo-line">
+							{recentActivity.map((event) => (
+								<div
+									key={event.id}
+									className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+								>
+									<div className="min-w-0">
+										<div className="flex flex-wrap items-center gap-2 text-sm text-kumo-default">
+											<span className="truncate font-medium">
+												{event.subject || "(No subject)"}
+											</span>
+											<Badge variant="secondary">
+												{humanizeEventSource(event.source)}
+											</Badge>
+											{event.undoneAt && (
+												<Badge variant="secondary">undone</Badge>
+											)}
+										</div>
+										<div className="mt-1 truncate text-xs text-kumo-subtle">
+											{event.action === "move"
+												? `${event.fromFolderName ?? event.fromFolderId ?? "Folder"} -> ${event.toFolderName ?? event.toFolderId ?? "Folder"}`
+												: "Marked read"}
+											{event.labelName ? ` · ${event.labelName}` : ""}
+											{event.createdAt ? ` · ${formatActivityDate(event.createdAt)}` : ""}
+										</div>
+									</div>
+									{event.action === "move" && !event.undoneAt && (
+										<Button
+											variant="ghost"
+											size="xs"
+											onClick={() => void handleUndoActivity(event.id)}
+											loading={undoTriageActivity.isPending}
+										>
+											Undo
+										</Button>
+									)}
+								</div>
+							))}
+						</div>
+					)}
 				</div>
 
 				{/* Save */}

@@ -123,6 +123,15 @@ interface EmailLabelRow {
 	updated_at?: string | null;
 }
 
+interface TriageEventParams {
+	emailId: string;
+	action: string;
+	source: string;
+	labelId?: string | null;
+	fromFolderId?: string | null;
+	toFolderId?: string | null;
+}
+
 type ClassificationStatus = "unclassified" | "processing" | "classified" | "error";
 type ClassifyEmailOptions = {
 	force?: boolean;
@@ -276,6 +285,134 @@ export class MailboxDO extends DurableObject<Env> {
 		};
 	}
 
+	#recordTriageEvent({
+		emailId,
+		action,
+		source,
+		labelId,
+		fromFolderId,
+		toFolderId,
+	}: TriageEventParams) {
+		this.ctx.storage.sql.exec(
+			`INSERT INTO triage_events
+				(id, email_id, action, source, label_id, from_folder_id, to_folder_id, created_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+			crypto.randomUUID(),
+			emailId,
+			action,
+			source,
+			labelId ?? null,
+			fromFolderId ?? null,
+			toFolderId ?? null,
+			new Date().toISOString(),
+		);
+	}
+
+	#formatTriageEvent(row: Record<string, unknown>) {
+		return {
+			id: row.id,
+			emailId: row.email_id,
+			action: row.action,
+			source: row.source,
+			labelId: row.label_id ?? null,
+			labelName: row.label_name ?? null,
+			labelColor: row.label_color ?? null,
+			fromFolderId: row.from_folder_id ?? null,
+			fromFolderName: row.from_folder_name ?? null,
+			toFolderId: row.to_folder_id ?? null,
+			toFolderName: row.to_folder_name ?? null,
+			subject: row.subject ?? null,
+			sender: row.sender ?? null,
+			createdAt: row.created_at ?? null,
+			undoneAt: row.undone_at ?? null,
+		};
+	}
+
+	#safeLimit(rawLimit: number | undefined, fallback: number, max: number) {
+		const parsed = Math.trunc(Number(rawLimit ?? fallback));
+		if (!Number.isFinite(parsed)) return fallback;
+		return Math.min(Math.max(parsed, 1), max);
+	}
+
+	#getTriageEvent(id: string) {
+		const row = [
+			...this.ctx.storage.sql.exec(
+				`SELECT te.*, e.subject, e.sender,
+				        l.name as label_name, l.color as label_color,
+				        from_f.name as from_folder_name,
+				        to_f.name as to_folder_name
+				 FROM triage_events te
+				 JOIN emails e ON e.id = te.email_id
+				 LEFT JOIN labels l ON l.id = te.label_id
+				 LEFT JOIN folders from_f ON from_f.id = te.from_folder_id
+				 LEFT JOIN folders to_f ON to_f.id = te.to_folder_id
+				 WHERE te.id = ?1
+				 LIMIT 1`,
+				id,
+			),
+		][0] as Record<string, unknown> | undefined;
+		return row ? this.#formatTriageEvent(row) : null;
+	}
+
+	async listTriageEvents(rawLimit = 25) {
+		const limit = this.#safeLimit(rawLimit, 25, 100);
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT te.*, e.subject, e.sender,
+				        l.name as label_name, l.color as label_color,
+				        from_f.name as from_folder_name,
+				        to_f.name as to_folder_name
+				 FROM triage_events te
+				 JOIN emails e ON e.id = te.email_id
+				 LEFT JOIN labels l ON l.id = te.label_id
+				 LEFT JOIN folders from_f ON from_f.id = te.from_folder_id
+				 LEFT JOIN folders to_f ON to_f.id = te.to_folder_id
+				 ORDER BY te.created_at DESC
+				 LIMIT ?1`,
+				limit,
+			),
+		] as Record<string, unknown>[];
+		return rows.map((row) => this.#formatTriageEvent(row));
+	}
+
+	async undoTriageEvent(id: string) {
+		const event = this.#getTriageEvent(id);
+		if (!event) return { error: "Triage event not found" };
+		if (event.undoneAt) return { error: "Triage event already undone" };
+		if (event.action !== "move") return { error: "Only move events can be undone" };
+		if (!event.fromFolderId || !event.toFolderId) {
+			return { error: "Triage event is missing folder information" };
+		}
+
+		const email = [
+			...this.ctx.storage.sql.exec(
+				`SELECT folder_id FROM emails WHERE id = ?1`,
+				event.emailId as string,
+			),
+		][0] as { folder_id: string } | undefined;
+		if (!email) return { error: "Email not found" };
+		if (email.folder_id !== event.toFolderId) {
+			return { error: "Email is no longer in the recorded destination folder" };
+		}
+
+		const undoneAt = new Date().toISOString();
+		this.ctx.storage.transactionSync(() => {
+			this.ctx.storage.sql.exec(
+				`UPDATE emails SET folder_id = ?2
+				 WHERE id = ?1 AND folder_id = ?3`,
+				event.emailId as string,
+				event.fromFolderId as string,
+				event.toFolderId as string,
+			);
+			this.ctx.storage.sql.exec(
+				`UPDATE triage_events SET undone_at = ?2 WHERE id = ?1`,
+				id,
+				undoneAt,
+			);
+		});
+		return this.#getTriageEvent(id);
+	}
+
 	async applyEmailLabel(
 		emailId: string,
 		labelId: string,
@@ -350,7 +487,12 @@ export class MailboxDO extends DurableObject<Env> {
 		return label.id;
 	}
 
-	#autoFileEmail(emailId: string, labelId: string, options: ClassifyEmailOptions) {
+	#autoFileEmail(
+		emailId: string,
+		labelId: string,
+		options: ClassifyEmailOptions,
+		source: "ai" | "rule",
+	) {
 		if (!options.autoFileAfterClassify) return;
 		if (!options.autoFileLabels?.includes(labelId)) return;
 
@@ -372,6 +514,14 @@ export class MailboxDO extends DurableObject<Env> {
 			folderId,
 			Folders.INBOX,
 		);
+		this.#recordTriageEvent({
+			emailId,
+			action: "move",
+			source: `${source}_auto_file`,
+			labelId,
+			fromFolderId: Folders.INBOX,
+			toFolderId: folderId,
+		});
 		console.log(`AI triage auto-filed ${emailId} to ${folderId}`);
 	}
 
@@ -387,7 +537,7 @@ export class MailboxDO extends DurableObject<Env> {
 			reason: choice.reason,
 		});
 		if (!("error" in result)) {
-			this.#autoFileEmail(emailId, choice.labelId, options);
+			this.#autoFileEmail(emailId, choice.labelId, options, source);
 		}
 		return result;
 	}
@@ -631,6 +781,94 @@ export class MailboxDO extends DurableObject<Env> {
 			),
 		] as { id: string }[];
 		return rows.map((row) => row.id);
+	}
+
+	async bulkFileLabel(labelId: string, rawLimit = 100) {
+		const folderId = this.#ensureFolderForLabel(labelId);
+		if (!folderId) return { error: "Label not found" };
+		if (folderId === Folders.INBOX) {
+			return { error: "Cannot move emails to the current Inbox folder" };
+		}
+
+		const limit = this.#safeLimit(rawLimit, 100, 100);
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT e.id
+				 FROM emails e
+				 JOIN email_labels el ON el.email_id = e.id
+				 WHERE el.label_id = ?1
+				   AND e.folder_id = ?2
+				 ORDER BY e.date DESC
+				 LIMIT ?3`,
+				labelId,
+				Folders.INBOX,
+				limit,
+			),
+		] as { id: string }[];
+		const emailIds = rows.map((row) => row.id);
+
+		this.ctx.storage.transactionSync(() => {
+			for (const emailId of emailIds) {
+				this.ctx.storage.sql.exec(
+					`UPDATE emails SET folder_id = ?2
+					 WHERE id = ?1 AND folder_id = ?3`,
+					emailId,
+					folderId,
+					Folders.INBOX,
+				);
+				this.#recordTriageEvent({
+					emailId,
+					action: "move",
+					source: "bulk_file",
+					labelId,
+					fromFolderId: Folders.INBOX,
+					toFolderId: folderId,
+				});
+			}
+		});
+
+		return { labelId, folderId, moved: emailIds.length, emailIds };
+	}
+
+	async bulkMarkLabelRead(labelId: string, rawLimit = 100) {
+		const labelExists = [
+			...this.ctx.storage.sql.exec(`SELECT 1 FROM labels WHERE id = ?1`, labelId),
+		].length > 0;
+		if (!labelExists) return { error: "Label not found" };
+
+		const limit = this.#safeLimit(rawLimit, 100, 100);
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT e.id
+				 FROM emails e
+				 JOIN email_labels el ON el.email_id = e.id
+				 WHERE el.label_id = ?1
+				   AND e.read = 0
+				 ORDER BY e.date DESC
+				 LIMIT ?2`,
+				labelId,
+				limit,
+			),
+		] as { id: string }[];
+		const emailIds = rows.map((row) => row.id);
+
+		this.ctx.storage.transactionSync(() => {
+			for (const emailId of emailIds) {
+				this.ctx.storage.sql.exec(
+					`UPDATE emails SET read = 1
+					 WHERE id = ?1 AND read = 0`,
+					emailId,
+				);
+				this.#recordTriageEvent({
+					emailId,
+					action: "mark_read",
+					source: "bulk_mark_read",
+					labelId,
+				});
+			}
+		});
+
+		return { labelId, markedRead: emailIds.length, emailIds };
 	}
 
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────

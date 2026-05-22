@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
-import type { ClassificationRule, Label, TriageStatus } from "~/types";
+import type { ClassificationRule, Label, TriageEvent, TriageStatus } from "~/types";
 import { queryKeys } from "./keys";
 
 function invalidateTriage(qc: ReturnType<typeof useQueryClient>, mailboxId: string) {
@@ -13,6 +13,7 @@ function invalidateTriage(qc: ReturnType<typeof useQueryClient>, mailboxId: stri
 	qc.invalidateQueries({ queryKey: queryKeys.labels.list(mailboxId) });
 	qc.invalidateQueries({ queryKey: queryKeys.rules.list(mailboxId) });
 	qc.invalidateQueries({ queryKey: queryKeys.triage.status(mailboxId) });
+	qc.invalidateQueries({ queryKey: queryKeys.triage.activity(mailboxId) });
 }
 
 export function useLabels(mailboxId: string | undefined) {
@@ -37,6 +38,14 @@ export function useTriageStatus(mailboxId: string | undefined) {
 		queryFn: () => api.getTriageStatus(mailboxId!),
 		enabled: !!mailboxId,
 		refetchInterval: 5_000,
+	});
+}
+
+export function useTriageActivity(mailboxId: string | undefined) {
+	return useQuery<TriageEvent[]>({
+		queryKey: mailboxId ? queryKeys.triage.activity(mailboxId) : ["triage", "_disabled", "activity"],
+		queryFn: () => api.listTriageActivity(mailboxId!),
+		enabled: !!mailboxId,
 	});
 }
 
@@ -91,6 +100,18 @@ export function useDisableRule() {
 	});
 }
 
+export function useUndoTriageActivity() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			mailboxId,
+			eventId,
+		}: { mailboxId: string; eventId: string }) =>
+			api.undoTriageActivity(mailboxId, eventId),
+		onSuccess: (_data, { mailboxId }) => invalidateTriage(qc, mailboxId),
+	});
+}
+
 export function useBackfillTriage() {
 	const qc = useQueryClient();
 	return useMutation({
@@ -107,6 +128,32 @@ export function useBackfillTriage() {
 			page?: number;
 			force?: boolean;
 		}) => api.backfillTriage(mailboxId, { folder, limit, page, force }),
+		onSuccess: (_data, { mailboxId }) => invalidateTriage(qc, mailboxId),
+	});
+}
+
+export function useBulkFileLabel() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			mailboxId,
+			labelId,
+			limit,
+		}: { mailboxId: string; labelId: string; limit?: number }) =>
+			api.bulkFileLabel(mailboxId, labelId, limit),
+		onSuccess: (_data, { mailboxId }) => invalidateTriage(qc, mailboxId),
+	});
+}
+
+export function useBulkMarkLabelRead() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: ({
+			mailboxId,
+			labelId,
+			limit,
+		}: { mailboxId: string; labelId: string; limit?: number }) =>
+			api.bulkMarkLabelRead(mailboxId, labelId, limit),
 		onSuccess: (_data, { mailboxId }) => invalidateTriage(qc, mailboxId),
 	});
 }

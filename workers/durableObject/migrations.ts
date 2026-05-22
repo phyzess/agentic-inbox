@@ -240,4 +240,27 @@ export const mailboxMigrations: Migration[] = [
 			CREATE INDEX IF NOT EXISTS idx_classification_feedback_email_id ON classification_feedback(email_id);
 		`,
 	},
+	{
+		name: "10_add_triage_events",
+		sql: `
+			CREATE TABLE IF NOT EXISTS triage_events (
+				id TEXT PRIMARY KEY,
+				email_id TEXT NOT NULL,
+				action TEXT NOT NULL,
+				source TEXT NOT NULL,
+				label_id TEXT,
+				from_folder_id TEXT,
+				to_folder_id TEXT,
+				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				undone_at TEXT,
+				FOREIGN KEY(email_id) REFERENCES emails(id) ON DELETE CASCADE,
+				FOREIGN KEY(label_id) REFERENCES labels(id) ON DELETE SET NULL,
+				FOREIGN KEY(from_folder_id) REFERENCES folders(id) ON DELETE SET NULL,
+				FOREIGN KEY(to_folder_id) REFERENCES folders(id) ON DELETE SET NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_triage_events_created_at ON triage_events(created_at);
+			CREATE INDEX IF NOT EXISTS idx_triage_events_email_id ON triage_events(email_id);
+		`,
+	},
 ];
