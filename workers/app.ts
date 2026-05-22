@@ -44,8 +44,14 @@ const app = new Hono<{ Bindings: Env }>();
 
 // Cloudflare Access JWT validation middleware (production only)
 app.use("*", async (c, next) => {
+	const url = new URL(c.req.url);
+	const isLocalRequest =
+		url.hostname === "localhost" ||
+		url.hostname === "127.0.0.1" ||
+		url.hostname === "::1";
+
 	// Skip validation in development
-	if (import.meta.env.DEV) {
+	if (import.meta.env.DEV || isLocalRequest) {
 		return next();
 	}
 

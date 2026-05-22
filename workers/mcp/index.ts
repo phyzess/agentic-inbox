@@ -11,6 +11,11 @@ import {
 	toolGetEmail,
 	toolGetThread,
 	toolSearchEmails,
+	toolListLabels,
+	toolClassifyEmail,
+	toolApplyLabel,
+	toolExplainClassification,
+	toolSuggestRule,
 	toolDraftReply,
 	toolDraftEmail,
 	toolUpdateDraft,
@@ -90,6 +95,20 @@ export class EmailMCP extends McpAgent<Env> {
 			async () => {
 				const result = await toolListMailboxes(env);
 				return mcpText(result);
+			},
+		);
+
+		// ── list_labels ────────────────────────────────────────────
+		this.server.tool(
+			"list_labels",
+			"List smart labels and counts for a mailbox.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+			},
+			async ({ mailboxId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpText(await toolListLabels(env, mailboxId));
 			},
 		);
 
@@ -179,6 +198,70 @@ export class EmailMCP extends McpAgent<Env> {
 				if (denied) return denied;
 				const result = await toolSearchEmails(env, mailboxId, { query, folder });
 				return mcpText(result);
+			},
+		);
+
+		// ── classify_email ─────────────────────────────────────────
+		this.server.tool(
+			"classify_email",
+			"Classify an email into one smart label. This only labels the email; it does not move folders or send.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The email ID"),
+				force: z.boolean().default(true).describe("Re-run classification"),
+			},
+			async ({ mailboxId, emailId, force }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolClassifyEmail(env, mailboxId, emailId, force));
+			},
+		);
+
+		// ── apply_label ────────────────────────────────────────────
+		this.server.tool(
+			"apply_label",
+			"Manually apply a smart label and record a correction. May create a suggested rule.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().describe("Target smart label ID"),
+				reason: z.string().optional().describe("Optional correction reason"),
+			},
+			async ({ mailboxId, emailId, labelId, reason }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolApplyLabel(env, mailboxId, { emailId, labelId, reason }));
+			},
+		);
+
+		// ── explain_classification ─────────────────────────────────
+		this.server.tool(
+			"explain_classification",
+			"Explain the current smart label source, confidence, and reason for an email.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The email ID"),
+			},
+			async ({ mailboxId, emailId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolExplainClassification(env, mailboxId, emailId));
+			},
+		);
+
+		// ── suggest_rule ───────────────────────────────────────────
+		this.server.tool(
+			"suggest_rule",
+			"Create a suggested sender/domain smart-label rule. It is not active until confirmed in the app.",
+			{
+				mailboxId: z.string().describe("The mailbox email address"),
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().optional().describe("Optional target label ID"),
+			},
+			async ({ mailboxId, emailId, labelId }) => {
+				const denied = await verifyMailbox(mailboxId);
+				if (denied) return denied;
+				return mcpResult(await toolSuggestRule(env, mailboxId, { emailId, labelId }));
 			},
 		);
 

@@ -8,6 +8,15 @@ import { eq, and, or, asc, desc, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
+import { stripHtmlToText } from "../lib/email-helpers";
+import {
+	buildClassificationPrompt,
+	buildSuggestedSenderDomainRule,
+	parseClassificationResponse,
+	ruleMatchesEmail,
+	type ClassificationChoice,
+	type EmailForRules,
+} from "../lib/classification-core";
 import type { Env } from "../types";
 import { applyMigrations, mailboxMigrations } from "./migrations";
 
@@ -52,6 +61,7 @@ const SORT_COLUMN_MAP = {
 interface SearchFilterOptions {
 	query: string;
 	folder?: string;
+	label?: string;
 	from?: string;
 	to?: string;
 	subject?: string;
@@ -64,6 +74,7 @@ interface SearchFilterOptions {
 
 interface GetEmailsOptions {
 	folder?: string;
+	label?: string;
 	thread_id?: string;
 	page?: number;
 	limit?: number;
@@ -99,6 +110,20 @@ interface AttachmentData {
 	disposition?: string | null;
 }
 
+interface EmailLabelRow {
+	id: string;
+	name: string;
+	description?: string | null;
+	color?: string | null;
+	source: string;
+	confidence?: number | null;
+	reason?: string | null;
+	created_at?: string | null;
+	updated_at?: string | null;
+}
+
+type ClassificationStatus = "unclassified" | "processing" | "classified" | "error";
+
 export class MailboxDO extends DurableObject<Env> {
 	declare __DURABLE_OBJECT_BRAND: never;
 	db: ReturnType<typeof drizzle>;
@@ -109,11 +134,398 @@ export class MailboxDO extends DurableObject<Env> {
 		applyMigrations(this.ctx.storage.sql, mailboxMigrations, this.ctx.storage);
 	}
 
+	// ── Smart labels and classification helpers ─────────────────────
+
+	async #getLabelsForEmailIds(emailIds: string[]) {
+		const map = new Map<string, EmailLabelRow[]>();
+		if (emailIds.length === 0) return map;
+
+		const placeholders = emailIds.map((_, i) => `?${i + 1}`).join(",");
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT el.email_id, l.id, l.name, l.description, l.color,
+				        el.source, el.confidence, el.reason, el.created_at, el.updated_at
+				 FROM email_labels el
+				 JOIN labels l ON l.id = el.label_id
+				 WHERE el.email_id IN (${placeholders})
+				 ORDER BY COALESCE(el.confidence, 0) DESC, el.updated_at DESC`,
+				...emailIds,
+			),
+		] as unknown as (EmailLabelRow & { email_id: string })[];
+
+		for (const row of rows) {
+			const list = map.get(row.email_id) ?? [];
+			list.push({
+				id: row.id,
+				name: row.name,
+				description: row.description,
+				color: row.color,
+				source: row.source,
+				confidence: row.confidence,
+				reason: row.reason,
+				created_at: row.created_at,
+				updated_at: row.updated_at,
+			});
+			map.set(row.email_id, list);
+		}
+		return map;
+	}
+
+	async #decorateEmailsWithLabels<T extends { id: string }>(rows: T[]) {
+		const labelsByEmail = await this.#getLabelsForEmailIds(rows.map((row) => row.id));
+		return rows.map((row) => ({
+			...row,
+			labels: labelsByEmail.get(row.id) ?? [],
+		}));
+	}
+
+	#recordClassificationStatus(
+		emailId: string,
+		status: ClassificationStatus,
+		error?: string | null,
+	) {
+		const now = new Date().toISOString();
+		this.ctx.storage.sql.exec(
+			`INSERT INTO email_classifications
+				(email_id, status, error, classified_at, updated_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5)
+			 ON CONFLICT(email_id) DO UPDATE SET
+				status = excluded.status,
+				error = excluded.error,
+				classified_at = excluded.classified_at,
+				updated_at = excluded.updated_at`,
+			emailId,
+			status,
+			error ?? null,
+			status === "classified" || status === "error" ? now : null,
+			now,
+		);
+	}
+
+	async getLabels() {
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT l.id, l.name, l.description, l.color, l.is_system,
+				        COUNT(el.email_id) as totalCount,
+				        COALESCE(SUM(CASE WHEN e.read = 0 THEN 1 ELSE 0 END), 0) as unreadCount
+				 FROM labels l
+				 LEFT JOIN email_labels el ON el.label_id = l.id
+				 LEFT JOIN emails e ON e.id = el.email_id
+				 GROUP BY l.id, l.name, l.description, l.color, l.is_system
+				 ORDER BY l.is_system DESC, l.name ASC`,
+			),
+		] as any[];
+
+		return rows.map((row) => ({
+			id: row.id,
+			name: row.name,
+			description: row.description,
+			color: row.color,
+			isSystem: !!row.is_system,
+			totalCount: Number(row.totalCount ?? 0),
+			unreadCount: Number(row.unreadCount ?? 0),
+		}));
+	}
+
+	async getClassification(emailId: string) {
+		const classification = [
+			...this.ctx.storage.sql.exec(
+				`SELECT * FROM email_classifications WHERE email_id = ?1`,
+				emailId,
+			),
+		][0] as Record<string, unknown> | undefined;
+		const labels = await this.#getLabelsForEmailIds([emailId]);
+		return {
+			emailId,
+			status: classification?.status ?? "unclassified",
+			errorMessage: classification?.error ?? null,
+			classifiedAt: classification?.classified_at ?? null,
+			updatedAt: classification?.updated_at ?? null,
+			labels: labels.get(emailId) ?? [],
+		};
+	}
+
+	async applyEmailLabel(
+		emailId: string,
+		labelId: string,
+		options: {
+			source?: "ai" | "rule" | "manual";
+			confidence?: number | null;
+			reason?: string | null;
+			replace?: boolean;
+		} = {},
+	) {
+		const emailExists = [
+			...this.ctx.storage.sql.exec(`SELECT 1 FROM emails WHERE id = ?1`, emailId),
+		].length > 0;
+		if (!emailExists) return { error: "Email not found" };
+
+		const labelExists = [
+			...this.ctx.storage.sql.exec(`SELECT 1 FROM labels WHERE id = ?1`, labelId),
+		].length > 0;
+		if (!labelExists) return { error: "Label not found" };
+
+		if (options.replace ?? true) {
+			this.ctx.storage.sql.exec(`DELETE FROM email_labels WHERE email_id = ?1`, emailId);
+		}
+
+		const now = new Date().toISOString();
+		this.ctx.storage.sql.exec(
+			`INSERT INTO email_labels
+				(email_id, label_id, source, confidence, reason, created_at, updated_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+			 ON CONFLICT(email_id, label_id) DO UPDATE SET
+				source = excluded.source,
+				confidence = excluded.confidence,
+				reason = excluded.reason,
+				updated_at = excluded.updated_at`,
+			emailId,
+			labelId,
+			options.source ?? "manual",
+			options.confidence ?? null,
+			options.reason ?? null,
+			now,
+		);
+		this.#recordClassificationStatus(emailId, "classified", null);
+		return this.getClassification(emailId);
+	}
+
+	async #matchingActiveRule(email: EmailForRules) {
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT * FROM classification_rules
+				 WHERE status = 'active'
+				 ORDER BY updated_at DESC`,
+			),
+		] as any[];
+		return rows.find((rule) => ruleMatchesEmail(rule, email)) ?? null;
+	}
+
+	async #runAiClassification(email: EmailData): Promise<ClassificationChoice> {
+		const bodyText = stripHtmlToText(email.body ?? "");
+		const response = (await this.env.AI.run(
+			// @ts-expect-error — model string may lag generated Workers types
+			"@cf/meta/llama-3.1-8b-instruct-fast",
+			{
+				messages: [
+					{
+						role: "system",
+						content:
+							"You are a careful email triage classifier. Return only valid JSON.",
+					},
+					{
+						role: "user",
+						content: buildClassificationPrompt({
+							sender: email.sender,
+							recipient: email.recipient,
+							subject: email.subject,
+							bodyText,
+						}),
+					},
+				],
+				max_tokens: 512,
+				temperature: 0,
+			},
+		)) as { response?: string };
+
+		return parseClassificationResponse(response?.response ?? "");
+	}
+
+	async classifyEmail(emailId: string, options: { force?: boolean; lowConfidenceThreshold?: number } = {}) {
+		if (!options.force) {
+			const current = await this.getClassification(emailId);
+			if (current.status === "classified" && current.labels.length > 0) {
+				return current;
+			}
+		}
+
+		const email = (await this.getEmail(emailId)) as (EmailData & {
+			folder_id?: string;
+		}) | null;
+		if (!email) return { error: "Email not found" };
+
+		this.#recordClassificationStatus(emailId, "processing", null);
+
+		try {
+			const activeRule = await this.#matchingActiveRule(email);
+			if (activeRule) {
+				console.log(
+					`AI triage rule hit: ${activeRule.id} -> ${activeRule.label_id}`,
+				);
+				return this.applyEmailLabel(emailId, activeRule.label_id, {
+					source: "rule",
+					confidence: 1,
+					reason: `Matched ${activeRule.field} ${activeRule.operator} ${activeRule.value}.`,
+				});
+			}
+
+			const choice = await this.#runAiClassification(email);
+			const lowConfidenceThreshold = Math.max(
+				0,
+				Math.min(1, options.lowConfidenceThreshold ?? 0.55),
+			);
+			if (choice.confidence < lowConfidenceThreshold) {
+				console.warn(
+					`Low-confidence email classification for ${emailId}: ${choice.labelId} (${choice.confidence})`,
+				);
+			}
+			return this.applyEmailLabel(emailId, choice.labelId, {
+				source: "ai",
+				confidence: choice.confidence,
+				reason: choice.reason,
+			});
+		} catch (e) {
+			const message = e instanceof Error ? e.message : "Classification failed";
+			console.error("Email classification failed:", emailId, message);
+			this.#recordClassificationStatus(emailId, "error", message);
+			return this.getClassification(emailId);
+		}
+	}
+
+	async suggestRuleForEmail(emailId: string, labelId?: string) {
+		const email = (await this.getEmail(emailId)) as EmailData | null;
+		if (!email) return { error: "Email not found" };
+
+		let targetLabelId = labelId;
+		if (!targetLabelId) {
+			const current = await this.getClassification(emailId);
+			targetLabelId = current.labels[0]?.id;
+		}
+		if (!targetLabelId) return { error: "No label to build a rule for" };
+
+		const suggestion = buildSuggestedSenderDomainRule(email, targetLabelId);
+		if (!suggestion) return { error: "Cannot infer a safe rule" };
+
+		const existing = [
+			...this.ctx.storage.sql.exec(
+				`SELECT * FROM classification_rules
+				 WHERE label_id = ?1 AND field = ?2 AND operator = ?3 AND value = ?4
+				 ORDER BY updated_at DESC LIMIT 1`,
+				suggestion.labelId,
+				suggestion.field,
+				suggestion.operator,
+				suggestion.value,
+			),
+		][0] as Record<string, unknown> | undefined;
+		if (existing) return existing;
+
+		const id = crypto.randomUUID();
+		const now = new Date().toISOString();
+		this.ctx.storage.sql.exec(
+			`INSERT INTO classification_rules
+				(id, label_id, field, operator, value, status, created_at, updated_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, 'suggested', ?6, ?6)`,
+			id,
+			suggestion.labelId,
+			suggestion.field,
+			suggestion.operator,
+			suggestion.value,
+			now,
+		);
+		return [...this.ctx.storage.sql.exec(
+			`SELECT * FROM classification_rules WHERE id = ?1`,
+			id,
+		)][0];
+	}
+
+	async correctEmailLabel(emailId: string, labelId: string, reason?: string) {
+		const current = await this.getClassification(emailId);
+		const fromLabelId = current.labels[0]?.id ?? null;
+		const applied = await this.applyEmailLabel(emailId, labelId, {
+			source: "manual",
+			confidence: 1,
+			reason: reason || "Manually corrected by the mailbox owner.",
+		});
+		if ("error" in applied) return applied;
+
+		this.ctx.storage.sql.exec(
+			`INSERT INTO classification_feedback
+				(id, email_id, from_label_id, to_label_id, reason, created_at)
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+			crypto.randomUUID(),
+			emailId,
+			fromLabelId,
+			labelId,
+			reason ?? null,
+			new Date().toISOString(),
+		);
+
+		const suggestedRule = await this.suggestRuleForEmail(emailId, labelId);
+		console.log(`Classification corrected for ${emailId}: ${fromLabelId} -> ${labelId}`);
+		return { ...applied, suggestedRule };
+	}
+
+	async getClassificationRules() {
+		return [
+			...this.ctx.storage.sql.exec(
+				`SELECT r.*, l.name as label_name, l.color as label_color
+				 FROM classification_rules r
+				 JOIN labels l ON l.id = r.label_id
+				 ORDER BY r.status = 'suggested' DESC, r.updated_at DESC`,
+			),
+		];
+	}
+
+	async updateClassificationRuleStatus(id: string, status: "active" | "disabled") {
+		const now = new Date().toISOString();
+		this.ctx.storage.sql.exec(
+			`UPDATE classification_rules
+			 SET status = ?2, updated_at = ?3
+			 WHERE id = ?1`,
+			id,
+			status,
+			now,
+		);
+		const row = [...this.ctx.storage.sql.exec(
+			`SELECT * FROM classification_rules WHERE id = ?1`,
+			id,
+		)][0];
+		return row ?? { error: "Rule not found" };
+	}
+
+	async getEmailsForClassification(options: {
+		folder?: string;
+		limit?: number;
+		page?: number;
+		force?: boolean;
+	} = {}) {
+		const { folder, page = 1, limit: rawLimit = 25, force = false } = options;
+		const limit = Math.min(Math.max(rawLimit, 1), 100);
+		const offset = (page - 1) * limit;
+		const params: (string | number)[] = [];
+		let where = "WHERE e.folder_id NOT IN ('sent', 'draft', 'trash')";
+		if (folder) {
+			params.push(folder);
+			where += ` AND e.folder_id = (SELECT id FROM folders WHERE name = ?${params.length} OR id = ?${params.length} LIMIT 1)`;
+		}
+		if (!force) {
+			where +=
+				" AND (ec.status IS NULL OR ec.status != 'classified')";
+		}
+		const limitParam = params.length + 1;
+		const offsetParam = params.length + 2;
+		const rows = [
+			...this.ctx.storage.sql.exec(
+				`SELECT e.id
+				 FROM emails e
+				 LEFT JOIN email_classifications ec ON ec.email_id = e.id
+				 ${where}
+				 ORDER BY e.date DESC
+				 LIMIT ?${limitParam} OFFSET ?${offsetParam}`,
+				...params,
+				limit,
+				offset,
+			),
+		] as { id: string }[];
+		return rows.map((row) => row.id);
+	}
+
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────
 
 	async getEmails(options: GetEmailsOptions = {}) {
 		const {
 			folder,
+			label,
 			thread_id,
 			page = 1,
 			limit: rawLimit = 25,
@@ -136,6 +548,11 @@ export class MailboxDO extends DurableObject<Env> {
 		if (folder) {
 			conditions.push(
 				sql`${schema.emails.folder_id} = (SELECT id FROM folders WHERE name = ${folder} OR id = ${folder} LIMIT 1)`,
+			);
+		}
+		if (label) {
+			conditions.push(
+				sql`${schema.emails.id} IN (SELECT email_id FROM email_labels WHERE label_id = ${label})`,
 			);
 		}
 		if (thread_id) {
@@ -169,18 +586,18 @@ export class MailboxDO extends DurableObject<Env> {
 			.offset(offset)
 			.all();
 
-		return result.map((email) => ({
+		return this.#decorateEmailsWithLabels(result.map((email) => ({
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
-		}));
+		})));
 	}
 
 	/**
 	 * Count total emails matching the given filters (for pagination).
 	 */
-	async countEmails(options: { folder?: string; thread_id?: string } = {}) {
-		const { folder, thread_id } = options;
+	async countEmails(options: { folder?: string; label?: string; thread_id?: string } = {}) {
+		const { folder, label, thread_id } = options;
 		const conditions: string[] = [];
 		const params: (string | number)[] = [];
 
@@ -189,6 +606,11 @@ export class MailboxDO extends DurableObject<Env> {
 				"folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)",
 			);
 			params.push(folder);
+		}
+
+		if (label) {
+			conditions.push(`id IN (SELECT email_id FROM email_labels WHERE label_id = ?${params.length + 1})`);
+			params.push(label);
 		}
 
 		if (thread_id) {
@@ -278,14 +700,14 @@ export class MailboxDO extends DurableObject<Env> {
 			);
 
 			const rows = [...result];
-			return rows.map((row: any) => ({
+			return this.#decorateEmailsWithLabels(rows.map((row: any) => ({
 				...row,
 				read: !!row.read,
 				starred: !!row.starred,
 				thread_count: row.thread_count || 1,
 				thread_unread_count: row.thread_unread_count || 0,
 				participants: row.participants || row.sender,
-			}));
+			})));
 		}
 
 		// Non-draft folders: full threading logic
@@ -373,7 +795,7 @@ export class MailboxDO extends DurableObject<Env> {
 		);
 
 		const rows = [...result];
-		return rows.map((row: any) => ({
+		return this.#decorateEmailsWithLabels(rows.map((row: any) => ({
 			...row,
 			read: !!row.read,
 			starred: !!row.starred,
@@ -382,7 +804,7 @@ export class MailboxDO extends DurableObject<Env> {
 			participants: row.participants || row.sender,
 			needs_reply: !!row.needs_reply,
 			has_draft: !!row.has_draft,
-		}));
+		})));
 	}
 
 	/**
@@ -451,11 +873,16 @@ export class MailboxDO extends DurableObject<Env> {
 			.where(eq(schema.attachments.email_id, id))
 			.all();
 
+		const labels = await this.#getLabelsForEmailIds([id]);
+		const classification = await this.getClassification(id);
+
 		return {
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
 			attachments: emailAttachments,
+			labels: labels.get(id) ?? [],
+			classification,
 		};
 	}
 
@@ -493,11 +920,13 @@ export class MailboxDO extends DurableObject<Env> {
 			attachmentsByEmail.set(att.email_id, list);
 		}
 
+		const labelsByEmail = await this.#getLabelsForEmailIds(emailIds);
 		return emailRows.map((email) => ({
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
 			attachments: attachmentsByEmail.get(email.id) || [],
+			labels: labelsByEmail.get(email.id) || [],
 		}));
 	}
 
@@ -659,7 +1088,7 @@ export class MailboxDO extends DurableObject<Env> {
 		options: SearchFilterOptions,
 		tableAlias = "",
 	): { conditions: string[]; params: (string | number)[] } {
-		const { query, folder, from, to, subject, date_start, date_end, is_read, is_starred, has_attachment } = options;
+		const { query, folder, label, from, to, subject, date_start, date_end, is_read, is_starred, has_attachment } = options;
 		const prefix = tableAlias ? `${tableAlias}.` : "";
 		const conditions: string[] = [];
 		const params: (string | number)[] = [];
@@ -681,6 +1110,10 @@ export class MailboxDO extends DurableObject<Env> {
 		if (folder) {
 			const p = addParam(folder);
 			conditions.push(`${prefix}folder_id = (SELECT id FROM folders WHERE name = ${p} OR id = ${p} LIMIT 1)`);
+		}
+		if (label) {
+			const p = addParam(label);
+			conditions.push(`${prefix}id IN (SELECT email_id FROM email_labels WHERE label_id = ${p})`);
 		}
 		if (from) { const p = addParam(`%${from}%`); conditions.push(`${prefix}sender LIKE ${p}`); }
 		if (to) { const p = addParam(`%${to}%`); conditions.push(`(${prefix}recipient LIKE ${p} OR ${prefix}cc LIKE ${p} OR ${prefix}bcc LIKE ${p})`); }
@@ -715,11 +1148,11 @@ export class MailboxDO extends DurableObject<Env> {
 		params.push(limit, offset);
 
 		const result = this.ctx.storage.sql.exec(query, ...params);
-		return [...result].map((row: any) => ({
+		return this.#decorateEmailsWithLabels([...result].map((row: any) => ({
 			...row,
 			read: !!row.read,
 			starred: !!row.starred,
-		}));
+		})));
 	}
 
 	/**

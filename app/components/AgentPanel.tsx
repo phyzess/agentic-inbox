@@ -17,6 +17,7 @@ import {
 	CheckCircleIcon,
 	StopIcon,
 	PencilSimpleIcon,
+	TagIcon,
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
@@ -41,6 +42,26 @@ const TOOL_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
 	search_emails: {
 		label: "Searching",
 		icon: <MagnifyingGlassIcon size={14} weight="bold" />,
+	},
+	list_labels: {
+		label: "Loading labels",
+		icon: <TagIcon size={14} weight="bold" />,
+	},
+	classify_email: {
+		label: "Classifying",
+		icon: <TagIcon size={14} weight="bold" />,
+	},
+	apply_label: {
+		label: "Updating label",
+		icon: <TagIcon size={14} weight="bold" />,
+	},
+	explain_classification: {
+		label: "Explaining label",
+		icon: <TagIcon size={14} weight="bold" />,
+	},
+	suggest_rule: {
+		label: "Suggesting rule",
+		icon: <TagIcon size={14} weight="bold" />,
 	},
 	draft_email: {
 		label: "Drafting email",
@@ -338,7 +359,7 @@ function AgentChatConnected({
 
 	const suggestedPrompts = [
 		"Show me the latest inbox emails",
-		"Any unread emails?",
+		"Classify the latest unread emails",
 		"Draft a response to the latest email",
 	];
 
@@ -385,8 +406,7 @@ function AgentChatConnected({
 							/>
 						</div>
 						<p className="text-xs text-kumo-subtle text-center leading-relaxed px-4">
-							I can read emails, search conversations, and draft
-							replies.
+							I can classify emails, explain labels, search conversations, and draft replies.
 						</p>
 						<div className="flex flex-col gap-1.5 w-full">
 							{suggestedPrompts.map((prompt) => (

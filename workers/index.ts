@@ -42,6 +42,22 @@ const DraftBody = z.object({
 	draft_id: z.string().optional(),
 });
 
+const ApplyLabelBody = z.object({
+	labelId: z.string().min(1),
+	reason: z.string().optional(),
+});
+
+const ClassifyBody = z.object({
+	force: z.boolean().optional(),
+});
+
+const BackfillBody = z.object({
+	folder: z.string().optional(),
+	limit: z.number().min(1).max(100).optional(),
+	page: z.number().min(1).optional(),
+	force: z.boolean().optional(),
+});
+
 // -- Helpers --------------------------------------------------------
 
 function slugify(text: string) { // can return "" for non-alphanumeric input
@@ -61,6 +77,30 @@ function boolQuery(c: AppContext, key: string): boolean | undefined {
 	const v = c.req.query(key);
 	if (v === undefined || v === "") return undefined;
 	return v === "true" || v === "1";
+}
+
+type ClassificationSettings = {
+	enabled?: boolean;
+	autoDraftAfterClassify?: boolean;
+	lowConfidenceThreshold?: number;
+};
+
+async function getMailboxSettings(env: Env, mailboxId: string) {
+	const obj = await env.BUCKET.get(`mailboxes/${mailboxId}.json`);
+	if (!obj) return {};
+	return (await obj.json<Record<string, unknown>>()) ?? {};
+}
+
+function classificationSettings(settings: Record<string, unknown>): Required<ClassificationSettings> {
+	const raw = (settings.classification ?? {}) as ClassificationSettings;
+	const threshold = typeof raw.lowConfidenceThreshold === "number"
+		? raw.lowConfidenceThreshold
+		: 0.55;
+	return {
+		enabled: raw.enabled !== false,
+		autoDraftAfterClassify: raw.autoDraftAfterClassify === true,
+		lowConfidenceThreshold: Math.max(0, Math.min(1, threshold)),
+	};
 }
 
 // -- App & middleware -----------------------------------------------
@@ -108,7 +148,17 @@ app.post("/api/v1/mailboxes", async (c) => {
 	}
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
-	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
+	const defaultSettings = {
+		fromName: name,
+		forwarding: { enabled: false, email: "" },
+		signature: { enabled: false, text: "" },
+		autoReply: { enabled: false, subject: "", message: "" },
+		classification: {
+			enabled: true,
+			autoDraftAfterClassify: false,
+			lowConfidenceThreshold: 0.55,
+		},
+	};
 	const finalSettings = { ...defaultSettings, ...settings };
 	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
 	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
@@ -144,6 +194,7 @@ app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
 
 app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const folder = c.req.query("folder");
+	const label = c.req.query("label");
 	const thread_id = c.req.query("thread_id");
 	const threaded = boolQuery(c, "threaded");
 	const page = intQuery(c, "page");
@@ -157,9 +208,9 @@ app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 		const totalCount = await (stub as any).countThreadedEmails(folder);
 		return c.json({ emails, totalCount });
 	}
-	const emails = await stub.getEmails({ folder, thread_id, page, limit, sortColumn, sortDirection });
-	if (folder) {
-		const totalCount = await stub.countEmails({ folder, thread_id });
+	const emails = await stub.getEmails({ folder, label, thread_id, page, limit, sortColumn, sortDirection });
+	if (folder || label) {
+		const totalCount = await stub.countEmails({ folder, label, thread_id });
 		return c.json({ emails, totalCount });
 	}
 	return c.json(emails);
@@ -294,11 +345,69 @@ app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => 
 	return ok ? c.body(null, 204) : c.json({ error: "Folder not found or cannot be deleted" }, 400);
 });
 
+// -- Smart labels / classification ----------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/labels", async (c: AppContext) => {
+	return c.json(await (c.var.mailboxStub as any).getLabels());
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/rules", async (c: AppContext) => {
+	return c.json(await (c.var.mailboxStub as any).getClassificationRules());
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/rules/:id/confirm", async (c: AppContext) => {
+	const result = await (c.var.mailboxStub as any).updateClassificationRuleStatus(c.req.param("id")!, "active");
+	return "error" in result ? c.json(result, 404) : c.json(result);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/rules/:id/disable", async (c: AppContext) => {
+	const result = await (c.var.mailboxStub as any).updateClassificationRuleStatus(c.req.param("id")!, "disabled");
+	return "error" in result ? c.json(result, 404) : c.json(result);
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/emails/:id/classification", async (c: AppContext) => {
+	return c.json(await (c.var.mailboxStub as any).getClassification(c.req.param("id")!));
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/classify", async (c: AppContext) => {
+	const { force } = ClassifyBody.parse(await c.req.json().catch(() => ({})));
+	const result = await (c.var.mailboxStub as any).classifyEmail(c.req.param("id")!, { force: force ?? true });
+	return "error" in result ? c.json(result, 404) : c.json(result);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/label", async (c: AppContext) => {
+	const { labelId, reason } = ApplyLabelBody.parse(await c.req.json());
+	const result = await (c.var.mailboxStub as any).correctEmailLabel(c.req.param("id")!, labelId, reason);
+	return "error" in result ? c.json(result, 400) : c.json(result);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/suggest-rule", async (c: AppContext) => {
+	const body = (await c.req.json().catch(() => ({}))) as { labelId?: string };
+	const result = await (c.var.mailboxStub as any).suggestRuleForEmail(c.req.param("id")!, body.labelId);
+	return "error" in result ? c.json(result, 400) : c.json(result);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/triage/backfill", async (c: AppContext) => {
+	const { folder, limit, page, force } = BackfillBody.parse(await c.req.json().catch(() => ({})));
+	const stub = c.var.mailboxStub as any;
+	const emailIds = await stub.getEmailsForClassification({ folder, limit, page, force });
+	c.executionCtx.waitUntil(
+		Promise.all(
+			emailIds.map((id: string) =>
+				stub.classifyEmail(id, { force: force ?? false }).catch((e: Error) =>
+					console.error("Backfill classification failed:", id, e.message),
+				),
+			),
+		).then(() => undefined),
+	);
+	return c.json({ status: "queued", queued: emailIds.length, emailIds });
+});
+
 // -- Search ---------------------------------------------------------
 
 app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
 	const searchOpts: Record<string, unknown> = {
-		query: c.req.query("query") || "", folder: c.req.query("folder"), from: c.req.query("from"),
+		query: c.req.query("query") || "", folder: c.req.query("folder"), label: c.req.query("label"), from: c.req.query("from"),
 		to: c.req.query("to"), subject: c.req.query("subject"), date_start: c.req.query("date_start"),
 		date_end: c.req.query("date_end"), is_read: boolQuery(c, "is_read"),
 		is_starred: boolQuery(c, "is_starred"), has_attachment: boolQuery(c, "has_attachment"),
@@ -428,11 +537,24 @@ async function receiveEmail(event: IncomingEmailMessage, env: Env, ctx: Executio
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
 
+	const settings = await getMailboxSettings(env, mailboxId);
+	const triage = classificationSettings(settings);
 	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
-	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
-		method: "POST", headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
-	})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	ctx.waitUntil((async () => {
+		if (triage.enabled) {
+			await (stub as any).classifyEmail(messageId, {
+				lowConfidenceThreshold: triage.lowConfidenceThreshold,
+			}).catch((e: Error) =>
+				console.error("Inbound classification failed:", e.message),
+			);
+		}
+		if (triage.autoDraftAfterClassify) {
+			await agentStub.fetch(new Request("https://agents/onNewEmail", {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
+			})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message));
+		}
+	})());
 }
 
 export { app, receiveEmail };

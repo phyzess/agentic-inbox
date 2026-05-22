@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { useKumoToastManager } from "@cloudflare/kumo";
+import { Badge, Button, useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { Folders } from "shared/folders";
@@ -15,6 +15,7 @@ import { splitEmailList, toEmailListValue } from "~/lib/utils";
 import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
+import { useApplyLabel, useClassifyEmail, useConfirmRule, useDisableRule, useLabels, useRules } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 import type { Email, Folder, Mailbox } from "~/types";
@@ -41,6 +42,12 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
+	const { data: labels = [] } = useLabels(mailboxId);
+	const { data: rules = [] } = useRules(mailboxId);
+	const applyLabel = useApplyLabel();
+	const classifyEmail = useClassifyEmail();
+	const confirmRule = useConfirmRule();
+	const disableRule = useDisableRule();
 	const { data: currentMailbox } = useMailbox(mailboxId) as {
 		data?: Mailbox;
 	};
@@ -84,6 +91,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	}, [allMessages, draftMessageIds, currentMailbox?.email, email]);
 
 	const moveToFolders = useMemo(() => { const cur = folder || email?.folder_id; return folders.filter((f) => f.id !== cur); }, [folders, folder, email?.folder_id]);
+	const suggestedRules = useMemo(() => rules.filter((rule) => rule.status === "suggested"), [rules]);
 
 	if (!email) return <EmailPanelSkeleton />;
 
@@ -180,6 +188,104 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				messageCount={allMessages.length}
 				showThreadCount={hasThread}
 			/>
+
+			<div className="border-b border-kumo-line px-4 py-3 md:px-6">
+				<div className="flex flex-wrap items-center gap-2">
+					<span className="text-xs font-medium uppercase tracking-wide text-kumo-subtle">
+						Smart label
+					</span>
+					{email.labels && email.labels.length > 0 ? (
+						email.labels.map((label) => (
+							<Badge key={label.id} variant="outline">
+								<span
+									className="inline-block h-2 w-2 rounded-full mr-1"
+									style={{ backgroundColor: label.color || "#64748b" }}
+								/>
+								{label.name}
+								{label.confidence != null
+									? ` ${Math.round(label.confidence * 100)}%`
+									: ""}
+							</Badge>
+						))
+					) : (
+						<Badge variant="secondary">Unclassified</Badge>
+					)}
+					<select
+						className="h-8 rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
+						value={email.labels?.[0]?.id || ""}
+						onChange={(event) => {
+							if (!mailboxId || !event.target.value) return;
+							applyLabel.mutate({
+								mailboxId,
+								emailId: email.id,
+								labelId: event.target.value,
+								reason: "Changed from the email detail panel.",
+							});
+						}}
+					>
+						<option value="">Choose label</option>
+						{labels.map((label) => (
+							<option key={label.id} value={label.id}>
+								{label.name}
+							</option>
+						))}
+					</select>
+					<Button
+						variant="secondary"
+						size="sm"
+						onClick={() =>
+							mailboxId &&
+							classifyEmail.mutate({
+								mailboxId,
+								emailId: email.id,
+								force: true,
+							})
+						}
+						loading={classifyEmail.isPending}
+					>
+						Reclassify
+					</Button>
+				</div>
+				{email.labels?.[0]?.reason && (
+					<p className="mt-2 text-xs text-kumo-subtle">
+						{email.labels[0].source}: {email.labels[0].reason}
+					</p>
+				)}
+				{suggestedRules.length > 0 && (
+					<div className="mt-3 space-y-2">
+						{suggestedRules.slice(0, 3).map((rule) => (
+							<div
+								key={rule.id}
+								className="flex flex-wrap items-center gap-2 rounded-md border border-kumo-line px-3 py-2 text-xs"
+							>
+								<span className="text-kumo-strong">
+									{`Suggested rule: ${rule.field} ${rule.operator} "${rule.value}" -> ${rule.label_name || rule.label_id}`}
+								</span>
+								<Button
+									variant="primary"
+									size="xs"
+									onClick={() =>
+										mailboxId &&
+										confirmRule.mutate({ mailboxId, ruleId: rule.id })
+									}
+								>
+									Confirm
+								</Button>
+								<Button
+									variant="ghost"
+									size="xs"
+									onClick={() =>
+										mailboxId &&
+										disableRule.mutate({ mailboxId, ruleId: rule.id })
+									}
+								>
+									Disable
+								</Button>
+							</div>
+						))}
+					</div>
+				)}
+			</div>
 
 			<div className="flex-1 overflow-y-auto">
 				{hasThread ? (

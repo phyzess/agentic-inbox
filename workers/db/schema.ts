@@ -2,7 +2,13 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import {
+	sqliteTable,
+	text,
+	integer,
+	real,
+	primaryKey,
+} from "drizzle-orm/sqlite-core";
 
 export const folders = sqliteTable("folders", {
 	id: text("id").primaryKey(),
@@ -41,4 +47,70 @@ export const attachments = sqliteTable("attachments", {
 	size: integer("size").notNull(),
 	content_id: text("content_id"),
 	disposition: text("disposition"),
+});
+
+export const labels = sqliteTable("labels", {
+	id: text("id").primaryKey(),
+	name: text("name").notNull().unique(),
+	description: text("description"),
+	color: text("color"),
+	is_system: integer("is_system").notNull().default(1),
+});
+
+export const emailLabels = sqliteTable(
+	"email_labels",
+	{
+		email_id: text("email_id")
+			.notNull()
+			.references(() => emails.id, { onDelete: "cascade" }),
+		label_id: text("label_id")
+			.notNull()
+			.references(() => labels.id, { onDelete: "cascade" }),
+		source: text("source").notNull().default("ai"),
+		confidence: real("confidence"),
+		reason: text("reason"),
+		created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+		updated_at: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+	},
+	(table) => ({
+		pk: primaryKey({ columns: [table.email_id, table.label_id] }),
+	}),
+);
+
+export const emailClassifications = sqliteTable("email_classifications", {
+	email_id: text("email_id")
+		.primaryKey()
+		.references(() => emails.id, { onDelete: "cascade" }),
+	status: text("status").notNull().default("unclassified"),
+	error: text("error"),
+	classified_at: text("classified_at"),
+	updated_at: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+});
+
+export const classificationFeedback = sqliteTable("classification_feedback", {
+	id: text("id").primaryKey(),
+	email_id: text("email_id")
+		.notNull()
+		.references(() => emails.id, { onDelete: "cascade" }),
+	from_label_id: text("from_label_id").references(() => labels.id, {
+		onDelete: "set null",
+	}),
+	to_label_id: text("to_label_id")
+		.notNull()
+		.references(() => labels.id, { onDelete: "cascade" }),
+	reason: text("reason"),
+	created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+});
+
+export const classificationRules = sqliteTable("classification_rules", {
+	id: text("id").primaryKey(),
+	label_id: text("label_id")
+		.notNull()
+		.references(() => labels.id, { onDelete: "cascade" }),
+	field: text("field").notNull(),
+	operator: text("operator").notNull(),
+	value: text("value").notNull(),
+	status: text("status").notNull().default("suggested"),
+	created_at: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+	updated_at: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
 });

@@ -43,6 +43,24 @@ type RateLimitStub = {
 	checkSendRateLimit: () => Promise<string | null>;
 };
 
+type TriageStub = {
+	getLabels: () => Promise<unknown>;
+	classifyEmail: (
+		emailId: string,
+		options?: { force?: boolean },
+	) => Promise<Record<string, unknown>>;
+	correctEmailLabel: (
+		emailId: string,
+		labelId: string,
+		reason?: string,
+	) => Promise<Record<string, unknown>>;
+	getClassification: (emailId: string) => Promise<Record<string, unknown>>;
+	suggestRuleForEmail: (
+		emailId: string,
+		labelId?: string,
+	) => Promise<Record<string, unknown>>;
+};
+
 // ── list_mailboxes ─────────────────────────────────────────────────
 
 export async function toolListMailboxes(env: Env) {
@@ -102,6 +120,57 @@ export async function toolSearchEmails(
 		query: params.query,
 		folder: params.folder,
 	});
+}
+
+// ── triage tools ──────────────────────────────────────────────────
+
+export async function toolListLabels(env: Env, mailboxId: string) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as unknown as TriageStub).getLabels();
+}
+
+export async function toolClassifyEmail(
+	env: Env,
+	mailboxId: string,
+	emailId: string,
+	force = true,
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as unknown as TriageStub).classifyEmail(emailId, { force });
+}
+
+export async function toolApplyLabel(
+	env: Env,
+	mailboxId: string,
+	params: { emailId: string; labelId: string; reason?: string },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as unknown as TriageStub).correctEmailLabel(
+		params.emailId,
+		params.labelId,
+		params.reason,
+	);
+}
+
+export async function toolExplainClassification(
+	env: Env,
+	mailboxId: string,
+	emailId: string,
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as unknown as TriageStub).getClassification(emailId);
+}
+
+export async function toolSuggestRule(
+	env: Env,
+	mailboxId: string,
+	params: { emailId: string; labelId?: string },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as unknown as TriageStub).suggestRuleForEmail(
+		params.emailId,
+		params.labelId,
+	);
 }
 
 // ── draft_reply ────────────────────────────────────────────────────

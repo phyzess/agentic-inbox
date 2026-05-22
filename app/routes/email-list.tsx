@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
+import { Badge, Button, Pagination, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
 	ArrowBendUpLeftIcon,
@@ -13,6 +13,7 @@ import {
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	StarIcon,
+	TagIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
@@ -30,6 +31,7 @@ import {
 	useUpdateEmail,
 } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
+import { useLabels } from "~/queries/labels";
 import { queryKeys } from "~/queries/keys";
 import { useUIStore } from "~/hooks/useUIStore";
 import type { Email } from "~/types";
@@ -143,8 +145,10 @@ function FolderEmptyState({
 export default function EmailListRoute() {
 	const { mailboxId, folder } = useParams<{
 		mailboxId: string;
-		folder: string;
+		folder?: string;
+		labelId?: string;
 	}>();
+	const { labelId } = useParams<{ labelId?: string }>();
 	const {
 		selectedEmailId,
 		isComposing,
@@ -161,11 +165,11 @@ export default function EmailListRoute() {
 
 	const params = useMemo(
 		() => ({
-			folder: folder || "",
+			...(labelId ? { label: labelId } : { folder: folder || "" }),
 			page: String(page),
 			limit: String(PAGE_SIZE),
 		}),
-		[folder, page],
+		[folder, labelId, page],
 	);
 
 	const {
@@ -177,12 +181,17 @@ export default function EmailListRoute() {
 	const totalCount = emailData?.totalCount ?? 0;
 
 	const { data: folders = [] } = useFolders(mailboxId);
+	const { data: labels = [] } = useLabels(mailboxId);
 
 	const folderName = useMemo(() => {
+		if (labelId) {
+			const found = labels.find((label) => label.id === labelId);
+			return found?.name || labelId.replace(/_/g, " ");
+		}
 		const found = folders.find((f) => f.id === folder);
 		if (found) return found.name;
 		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";
-	}, [folders, folder]);
+	}, [folders, labels, folder, labelId]);
 
 	const isPanelOpen = selectedEmailId !== null || isComposing;
 
@@ -190,14 +199,15 @@ export default function EmailListRoute() {
 	const prevFolderRef = useRef<string | undefined>(undefined);
 
 	useEffect(() => {
-		const folderChanged = prevFolderRef.current !== `${mailboxId}/${folder}`;
-		prevFolderRef.current = `${mailboxId}/${folder}`;
+		const viewKey = labelId ? `label:${labelId}` : `folder:${folder}`;
+		const folderChanged = prevFolderRef.current !== `${mailboxId}/${viewKey}`;
+		prevFolderRef.current = `${mailboxId}/${viewKey}`;
 
 		if (folderChanged) {
 			closePanel();
 			setPage(1);
 		}
-	}, [mailboxId, folder, closePanel]);
+	}, [mailboxId, folder, labelId, closePanel]);
 
 	const toggleStar = (e: React.MouseEvent, email: Email) => {
 		e.preventDefault();
@@ -276,7 +286,10 @@ export default function EmailListRoute() {
 				{/* Folder header */}
 				<div className="flex items-center justify-between px-4 py-3.5 border-b border-kumo-line shrink-0 md:px-5">
 					<h1 className="text-lg font-semibold text-kumo-default">
-						{folderName}
+						<span className="inline-flex items-center gap-2">
+							{labelId && <TagIcon size={18} />}
+							{folderName}
+						</span>
 					</h1>
 					<div className="flex items-center gap-1">
 						{totalCount > 0 && (
@@ -384,6 +397,23 @@ export default function EmailListRoute() {
 														</span>
 													</Tooltip>
 												)}
+												{email.labels?.slice(0, 2).map((label) => (
+													<Tooltip
+														key={label.id}
+														content={`${label.reason || label.name}${label.confidence != null ? ` (${Math.round(label.confidence * 100)}%)` : ""}`}
+														asChild
+													>
+														<span>
+															<Badge variant="outline">
+																<span
+																	className="inline-block h-2 w-2 rounded-full mr-1"
+																	style={{ backgroundColor: label.color || "#64748b" }}
+																/>
+																{label.name}
+															</Badge>
+														</span>
+													</Tooltip>
+												))}
 												<span className="text-sm text-kumo-subtle shrink-0 ml-auto">
 													{formatListDate(email.date)}
 												</span>
