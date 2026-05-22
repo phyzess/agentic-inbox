@@ -245,6 +245,30 @@ export class MailboxDO extends DurableObject<Env> {
 		};
 	}
 
+	async getClassificationStatus() {
+		const row = [
+			...this.ctx.storage.sql.exec(
+				`SELECT
+					COUNT(e.id) as total,
+					COALESCE(SUM(CASE WHEN ec.status = 'classified' THEN 1 ELSE 0 END), 0) as classified,
+					COALESCE(SUM(CASE WHEN ec.status = 'processing' THEN 1 ELSE 0 END), 0) as processing,
+					COALESCE(SUM(CASE WHEN ec.status = 'error' THEN 1 ELSE 0 END), 0) as error,
+					COALESCE(SUM(CASE WHEN ec.status IS NULL OR ec.status = 'unclassified' THEN 1 ELSE 0 END), 0) as unclassified
+				 FROM emails e
+				 LEFT JOIN email_classifications ec ON ec.email_id = e.id
+				 WHERE e.folder_id NOT IN ('sent', 'draft', 'trash')`,
+			),
+		][0] as Record<string, number | string | null> | undefined;
+
+		return {
+			total: Number(row?.total ?? 0),
+			classified: Number(row?.classified ?? 0),
+			processing: Number(row?.processing ?? 0),
+			error: Number(row?.error ?? 0),
+			unclassified: Number(row?.unclassified ?? 0),
+		};
+	}
+
 	async applyEmailLabel(
 		emailId: string,
 		labelId: string,

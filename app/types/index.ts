@@ -100,6 +100,14 @@ export interface ClassificationResult {
 	suggestedRule?: ClassificationRule;
 }
 
+export interface TriageStatus {
+	total: number;
+	classified: number;
+	processing: number;
+	error: number;
+	unclassified: number;
+}
+
 export interface ClassificationRule {
 	id: string;
 	label_id: string;
