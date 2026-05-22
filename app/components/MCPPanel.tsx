@@ -47,10 +47,15 @@ function CopyButton({ text }: { text: string }) {
 
 const TOOLS = [
 	{ name: "list_mailboxes", desc: "List all mailboxes" },
+	{ name: "list_labels", desc: "List smart labels" },
 	{ name: "list_emails", desc: "List emails in a folder" },
 	{ name: "get_email", desc: "Read a full email with body" },
 	{ name: "get_thread", desc: "Load a conversation thread" },
 	{ name: "search_emails", desc: "Search emails by query" },
+	{ name: "classify_email", desc: "Classify an email" },
+	{ name: "apply_label", desc: "Correct a smart label" },
+	{ name: "explain_classification", desc: "Explain a label" },
+	{ name: "suggest_rule", desc: "Suggest a rule" },
 	{ name: "draft_reply", desc: "Draft a reply to an email" },
 	{ name: "send_reply", desc: "Send a reply" },
 	{ name: "send_email", desc: "Send a new email" },

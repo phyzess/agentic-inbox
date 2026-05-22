@@ -11,6 +11,7 @@ import {
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	PlusIcon,
+	TagIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
@@ -18,6 +19,7 @@ import { useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
+import { useLabels } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -77,6 +79,7 @@ export default function Sidebar() {
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
+	const { data: labels = [] } = useLabels(mailboxId);
 	const createFolderMutation = useCreateFolder();
 	const { startCompose, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
@@ -169,6 +172,32 @@ export default function Sidebar() {
 						onClick={handleNavClick}
 					/>
 				))}
+
+				{labels.length > 0 && (
+					<div className="pt-5">
+						<div className="px-3 mb-1.5">
+							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+								Smart Labels
+							</span>
+						</div>
+						{labels.map((label) => (
+							<FolderLink
+								key={label.id}
+								to={`/mailbox/${mailboxId}/labels/${label.id}`}
+								icon={
+									<TagIcon
+										size={18}
+										weight="fill"
+										style={{ color: label.color || undefined }}
+									/>
+								}
+								label={label.name}
+								unreadCount={label.unreadCount}
+								onClick={handleNavClick}
+							/>
+						))}
+					</div>
+				)}
 
 				{/* Custom folders */}
 				{customFolders.length > 0 && (

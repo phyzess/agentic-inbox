@@ -25,6 +25,11 @@ import {
 	toolSearchEmails,
 	toolDraftReply,
 	toolDraftEmail,
+	toolListLabels,
+	toolClassifyEmail,
+	toolApplyLabel,
+	toolExplainClassification,
+	toolSuggestRule,
 	toolMarkEmailRead,
 	toolMoveEmail,
 	toolDiscardDraft,
@@ -50,7 +55,7 @@ function defineTool(def: {
  * Default system prompt used when no custom prompt is configured for a mailbox.
  * Users can override this on a per-mailbox basis via the Settings UI.
  */
-const DEFAULT_SYSTEM_PROMPT = `You are an email assistant that helps manage this inbox. You read emails, draft replies, and help organize conversations.
+const DEFAULT_SYSTEM_PROMPT = `You are an email assistant that helps manage this inbox. You classify emails, explain triage decisions, read emails, draft replies, and help organize conversations.
 
 ## Writing Style
 Write like a real person. Short, direct, flowing prose. Get to the point. Plain text only - no HTML tags in your replies.
@@ -109,6 +114,15 @@ async function getSystemPrompt(env: Env, mailboxId: string): Promise<string> {
 
 function createEmailTools(env: Env, mailboxId: string) {
 	return {
+		list_labels: defineTool({
+			description:
+				"List available smart labels and their mailbox counts.",
+			parameters: z.object({}),
+			execute: async (): Promise<unknown> => {
+				return toolListLabels(env, mailboxId);
+			},
+		}),
+
 		list_emails: defineTool({
 			description:
 				"List emails in a folder. Returns email metadata (id, subject, sender, recipient, date, read/starred status, thread_id). Use folder='inbox' for received emails, 'sent' for sent emails.",
@@ -173,6 +187,61 @@ function createEmailTools(env: Env, mailboxId: string) {
 			}),
 			execute: async ({ query, folder }): Promise<unknown> => {
 				return toolSearchEmails(env, mailboxId, { query, folder });
+			},
+		}),
+
+		classify_email: defineTool({
+			description:
+				"Classify an email into one smart label. This only labels the email; it does not move folders or send anything.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID to classify"),
+				force: z
+					.boolean()
+					.default(true)
+					.describe("true to re-run classification even if already labeled"),
+			}),
+			execute: async ({ emailId, force }): Promise<unknown> => {
+				return toolClassifyEmail(env, mailboxId, emailId, force);
+			},
+		}),
+
+		apply_label: defineTool({
+			description:
+				"Manually apply a smart label to an email and record the correction. This may create a suggested rule for review.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID"),
+				labelId: z
+					.string()
+					.describe(
+						"Label ID: action_needed, waiting, newsletter, notification, transaction, personal, low_priority",
+					),
+				reason: z.string().optional().describe("Optional correction reason"),
+			}),
+			execute: async ({ emailId, labelId, reason }): Promise<unknown> => {
+				return toolApplyLabel(env, mailboxId, { emailId, labelId, reason });
+			},
+		}),
+
+		explain_classification: defineTool({
+			description:
+				"Explain the current smart label assignment, source, confidence, and reason for an email.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID"),
+			}),
+			execute: async ({ emailId }): Promise<unknown> => {
+				return toolExplainClassification(env, mailboxId, emailId);
+			},
+		}),
+
+		suggest_rule: defineTool({
+			description:
+				"Create a suggested sender/domain rule for an email's current or provided smart label. The rule is not active until confirmed.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID"),
+				labelId: z.string().optional().describe("Optional target label ID"),
+			}),
+			execute: async ({ emailId, labelId }): Promise<unknown> => {
+				return toolSuggestRule(env, mailboxId, { emailId, labelId });
 			},
 		}),
 
@@ -345,6 +414,8 @@ export class EmailAgent extends AIChatAgent<any> {
 		let emailBody = "";
 		let threadContext = "";
 		try {
+			await (stub as unknown as { classifyEmail: (id: string) => Promise<unknown> })
+				.classifyEmail(emailData.emailId);
 			const email = (await stub.getEmail(emailData.emailId)) as EmailFull | null;
 			if (email?.body) {
 				const isInjection = await isPromptInjection(env.AI, email.body);

@@ -39,9 +39,11 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 - **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
-- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending
+- **Built-in AI agent** — Side panel with email and triage tools for reading, searching, classifying, drafting, and sending
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
+- **Smart classification** — Incoming mail is labeled with AI triage labels such as Action needed, Waiting, Newsletter, Notification, Transaction, Personal, and Low priority. V1 only applies labels; it does not move, archive, mark read, or send email automatically.
+- **Correctable triage rules** — Manual label corrections are recorded and can create suggested sender/domain rules that remain inactive until you confirm them.
 
 ## Stack
 
@@ -77,6 +79,10 @@ npm run deploy
 - [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) configured for deployed/shared environments (required in production)
 
 Any user who passes the shared Cloudflare Access policy can access all mailboxes in this app by design. This includes the MCP server at `/mcp` -- external AI tools (Claude Code, Cursor, etc.) connected via MCP can operate on any mailbox by passing a `mailboxId` parameter. There is no per-mailbox authorization; the Cloudflare Access policy is the single trust boundary.
+
+## Smart classification safety
+
+Smart classification runs in the background after an inbound email is stored. If classification fails, the email remains in Inbox and can be retried from the UI. By default, classification only adds labels and explanations. Auto-drafting after classification is off by default and can be enabled per mailbox in Settings.
 
 ## Architecture
 

@@ -13,6 +13,7 @@
  *   is:unread / is:read       — filter by read status
  *   is:starred                — filter by starred status
  *   has:attachment             — filter by attachment presence
+ *   label:newsletter           — filter by smart label
  *   before:2025-01-01         — emails before date
  *   after:2025-01-01          — emails after date
  *
@@ -29,13 +30,14 @@ export interface ParsedSearch {
 	is_read?: boolean;
 	is_starred?: boolean;
 	has_attachment?: boolean;
+	label?: string;
 	date_start?: string;
 	date_end?: string;
 }
 
 // Matches operator:value or operator:"quoted value"
 const OPERATOR_RE =
-	/\b(from|to|subject|in|is|has|before|after):(?:"([^"]*?)"|(\S+))/gi;
+	/\b(from|to|subject|in|is|has|label|before|after):(?:"([^"]*?)"|(\S+))/gi;
 
 export function parseSearchQuery(input: string): ParsedSearch {
 	const result: ParsedSearch = { query: "" };
@@ -97,6 +99,9 @@ export function parseSearchQuery(input: string): ParsedSearch {
 				if (value.toLowerCase() === "attachment") {
 					result.has_attachment = true;
 				}
+				break;
+			case "label":
+				result.label = value.toLowerCase();
 				break;
 			case "before":
 				result.date_end = normalizeDate(value);

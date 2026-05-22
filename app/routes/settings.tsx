@@ -6,6 +6,7 @@ import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/k
 import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
+import { useBackfillTriage } from "~/queries/labels";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 
 // Placeholder shown in the textarea when no custom prompt is set.
@@ -17,15 +18,26 @@ export default function SettingsRoute() {
 	const toastManager = useKumoToastManager();
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
+	const backfillTriage = useBackfillTriage();
 
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
+	const [classificationEnabled, setClassificationEnabled] = useState(true);
+	const [autoDraftAfterClassify, setAutoDraftAfterClassify] = useState(false);
+	const [lowConfidenceThreshold, setLowConfidenceThreshold] = useState(0.55);
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
+			setClassificationEnabled(mailbox.settings?.classification?.enabled !== false);
+			setAutoDraftAfterClassify(
+				mailbox.settings?.classification?.autoDraftAfterClassify === true,
+			);
+			setLowConfidenceThreshold(
+				mailbox.settings?.classification?.lowConfidenceThreshold ?? 0.55,
+			);
 		}
 	}, [mailbox]);
 
@@ -36,6 +48,11 @@ export default function SettingsRoute() {
 			...mailbox.settings,
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
+			classification: {
+				enabled: classificationEnabled,
+				autoDraftAfterClassify,
+				lowConfidenceThreshold,
+			},
 		};
 		try {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
@@ -124,6 +141,76 @@ export default function SettingsRoute() {
 						The prompt is sent as the system message to the AI model.
 						It controls the agent's personality, writing style, and behavior rules.
 					</p>
+				</div>
+
+				{/* Smart classification */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="text-sm font-medium text-kumo-default mb-4">
+						Smart Classification
+					</div>
+					<div className="space-y-3">
+						<label className="flex items-center gap-2 text-sm text-kumo-default">
+							<input
+								type="checkbox"
+								checked={classificationEnabled}
+								onChange={(event) => setClassificationEnabled(event.target.checked)}
+							/>
+							Classify new inbound emails
+						</label>
+						<label className="flex items-center gap-2 text-sm text-kumo-default">
+							<input
+								type="checkbox"
+								checked={autoDraftAfterClassify}
+								onChange={(event) =>
+									setAutoDraftAfterClassify(event.target.checked)
+								}
+							/>
+							Auto-draft replies after classification
+						</label>
+						<label className="block text-sm text-kumo-default">
+							<span className="mb-1 block text-xs font-medium text-kumo-subtle">
+								Low-confidence threshold
+							</span>
+							<input
+								type="number"
+								min="0"
+								max="1"
+								step="0.05"
+								value={lowConfidenceThreshold}
+								onChange={(event) => {
+									const next = Number(event.target.value);
+									setLowConfidenceThreshold(
+										Number.isFinite(next)
+											? Math.max(0, Math.min(1, next))
+											: 0.55,
+									);
+								}}
+								className="h-9 w-28 rounded-md border border-kumo-line bg-kumo-base px-2"
+							/>
+						</label>
+						<div className="flex items-center gap-2 pt-2">
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={async () => {
+									if (!mailboxId) return;
+									const result = await backfillTriage.mutateAsync({
+										mailboxId,
+										limit: 50,
+									});
+									toastManager.add({
+										title: `Queued ${result.queued} emails for classification`,
+									});
+								}}
+								loading={backfillTriage.isPending}
+							>
+								Classify existing mail
+							</Button>
+							<span className="text-xs text-kumo-subtle">
+								Labels only; emails stay in their current folders.
+							</span>
+						</div>
+					</div>
 				</div>
 
 				{/* Save */}

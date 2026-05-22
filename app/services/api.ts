@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { Email, Folder, Mailbox } from "~/types";
+import type { ClassificationResult, ClassificationRule, Email, Folder, Label, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -123,6 +123,14 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, { folderId }),
+	classifyEmail: (mailboxId: string, id: string, force = true) =>
+		post<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/classify`, { force }),
+	applyLabel: (mailboxId: string, id: string, labelId: string, reason?: string) =>
+		post<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/label`, { labelId, reason }),
+	getClassification: (mailboxId: string, id: string) =>
+		get<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/classification`),
+	suggestRule: (mailboxId: string, id: string, labelId?: string) =>
+		post<ClassificationRule>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/suggest-rule`, { labelId }),
 	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>
 		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, { signal: opts?.signal }),
 	markThreadRead: (mailboxId: string, threadId: string) =>
@@ -156,6 +164,23 @@ const api = {
 		put<Folder>(`/api/v1/mailboxes/${mailboxId}/folders/${id}`, { name }),
 	deleteFolder: (mailboxId: string, id: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}/folders/${id}`),
+
+	// Smart labels
+	listLabels: (mailboxId: string) =>
+		get<Label[]>(`/api/v1/mailboxes/${mailboxId}/labels`),
+	listRules: (mailboxId: string) =>
+		get<ClassificationRule[]>(`/api/v1/mailboxes/${mailboxId}/rules`),
+	confirmRule: (mailboxId: string, ruleId: string) =>
+		post<ClassificationRule>(`/api/v1/mailboxes/${mailboxId}/rules/${ruleId}/confirm`),
+	disableRule: (mailboxId: string, ruleId: string) =>
+		post<ClassificationRule>(`/api/v1/mailboxes/${mailboxId}/rules/${ruleId}/disable`),
+	backfillTriage: (
+		mailboxId: string,
+		body: { folder?: string; limit?: number; page?: number; force?: boolean },
+	) => post<{ status: string; queued: number; emailIds: string[] }>(
+		`/api/v1/mailboxes/${mailboxId}/triage/backfill`,
+		body,
+	),
 
 	// Search
 	searchEmails: (mailboxId: string, params: Record<string, string>) =>

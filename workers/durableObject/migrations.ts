@@ -166,6 +166,78 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX IF NOT EXISTS idx_emails_folder_id ON emails(folder_id);
             CREATE INDEX IF NOT EXISTS idx_emails_date ON emails(date);
             CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date DESC);
-        `,
+		`,
+	},
+	{
+		name: "9_add_ai_triage_labels",
+		sql: `
+			CREATE TABLE IF NOT EXISTS labels (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL UNIQUE,
+				description TEXT,
+				color TEXT,
+				is_system INTEGER NOT NULL DEFAULT 1
+			);
+
+			INSERT OR IGNORE INTO labels (id, name, description, color, is_system) VALUES
+				('action_needed', 'Action needed', 'Needs a reply, decision, or concrete follow-up.', '#dc2626', 1),
+				('waiting', 'Waiting', 'You are waiting for someone else to respond or act.', '#d97706', 1),
+				('newsletter', 'Newsletter', 'Recurring editorial, digest, marketing, or list email.', '#2563eb', 1),
+				('notification', 'Notification', 'Automated product, account, or workflow notification.', '#4f46e5', 1),
+				('transaction', 'Transaction', 'Receipt, invoice, shipping, payment, or account transaction.', '#059669', 1),
+				('personal', 'Personal', 'Human personal or relationship-oriented message.', '#be185d', 1),
+				('low_priority', 'Low priority', 'Safe to read later; low urgency and low consequence.', '#64748b', 1);
+
+			CREATE TABLE IF NOT EXISTS email_labels (
+				email_id TEXT NOT NULL,
+				label_id TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'ai',
+				confidence REAL,
+				reason TEXT,
+				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (email_id, label_id),
+				FOREIGN KEY(email_id) REFERENCES emails(id) ON DELETE CASCADE,
+				FOREIGN KEY(label_id) REFERENCES labels(id) ON DELETE CASCADE
+			);
+
+			CREATE TABLE IF NOT EXISTS email_classifications (
+				email_id TEXT PRIMARY KEY,
+				status TEXT NOT NULL DEFAULT 'unclassified',
+				error TEXT,
+				classified_at TEXT,
+				updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY(email_id) REFERENCES emails(id) ON DELETE CASCADE
+			);
+
+			CREATE TABLE IF NOT EXISTS classification_feedback (
+				id TEXT PRIMARY KEY,
+				email_id TEXT NOT NULL,
+				from_label_id TEXT,
+				to_label_id TEXT NOT NULL,
+				reason TEXT,
+				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY(email_id) REFERENCES emails(id) ON DELETE CASCADE,
+				FOREIGN KEY(from_label_id) REFERENCES labels(id) ON DELETE SET NULL,
+				FOREIGN KEY(to_label_id) REFERENCES labels(id) ON DELETE CASCADE
+			);
+
+			CREATE TABLE IF NOT EXISTS classification_rules (
+				id TEXT PRIMARY KEY,
+				label_id TEXT NOT NULL,
+				field TEXT NOT NULL,
+				operator TEXT NOT NULL,
+				value TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'suggested',
+				created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY(label_id) REFERENCES labels(id) ON DELETE CASCADE
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_email_labels_label_id ON email_labels(label_id);
+			CREATE INDEX IF NOT EXISTS idx_email_labels_email_id ON email_labels(email_id);
+			CREATE INDEX IF NOT EXISTS idx_classification_rules_status ON classification_rules(status);
+			CREATE INDEX IF NOT EXISTS idx_classification_feedback_email_id ON classification_feedback(email_id);
+		`,
 	},
 ];
