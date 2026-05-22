@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { ClassificationResult, ClassificationRule, Email, Folder, Label, Mailbox } from "~/types";
+import type { ClassificationResult, ClassificationRule, Email, Folder, Label, Mailbox, TriageStatus } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -129,6 +129,8 @@ const api = {
 		post<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/label`, { labelId, reason }),
 	getClassification: (mailboxId: string, id: string) =>
 		get<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/classification`),
+	getTriageStatus: (mailboxId: string) =>
+		get<TriageStatus>(`/api/v1/mailboxes/${mailboxId}/triage/status`),
 	suggestRule: (mailboxId: string, id: string, labelId?: string) =>
 		post<ClassificationRule>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/suggest-rule`, { labelId }),
 	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>

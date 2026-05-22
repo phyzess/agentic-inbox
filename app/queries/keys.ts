@@ -25,6 +25,9 @@ export const queryKeys = {
 	rules: {
 		list: (mailboxId: string) => ["rules", mailboxId] as const,
 	},
+	triage: {
+		status: (mailboxId: string) => ["triage", mailboxId, "status"] as const,
+	},
 	search: {
 		results: (mailboxId: string, query: string, page: number) =>
 			["search", mailboxId, query, page] as const,

@@ -4,13 +4,14 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
-import type { ClassificationRule, Label } from "~/types";
+import type { ClassificationRule, Label, TriageStatus } from "~/types";
 import { queryKeys } from "./keys";
 
 function invalidateTriage(qc: ReturnType<typeof useQueryClient>, mailboxId: string) {
 	qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
 	qc.invalidateQueries({ queryKey: queryKeys.labels.list(mailboxId) });
 	qc.invalidateQueries({ queryKey: queryKeys.rules.list(mailboxId) });
+	qc.invalidateQueries({ queryKey: queryKeys.triage.status(mailboxId) });
 }
 
 export function useLabels(mailboxId: string | undefined) {
@@ -26,6 +27,15 @@ export function useRules(mailboxId: string | undefined) {
 		queryKey: mailboxId ? queryKeys.rules.list(mailboxId) : ["rules", "_disabled"],
 		queryFn: () => api.listRules(mailboxId!),
 		enabled: !!mailboxId,
+	});
+}
+
+export function useTriageStatus(mailboxId: string | undefined) {
+	return useQuery<TriageStatus>({
+		queryKey: mailboxId ? queryKeys.triage.status(mailboxId) : ["triage", "_disabled", "status"],
+		queryFn: () => api.getTriageStatus(mailboxId!),
+		enabled: !!mailboxId,
+		refetchInterval: 5_000,
 	});
 }
 

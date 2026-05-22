@@ -6,7 +6,7 @@ import { Badge, Button, Input, Loader, useKumoToastManager } from "@cloudflare/k
 import { RobotIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
-import { useBackfillTriage } from "~/queries/labels";
+import { useBackfillTriage, useTriageStatus } from "~/queries/labels";
 import { useMailbox, useUpdateMailbox } from "~/queries/mailboxes";
 
 // Placeholder shown in the textarea when no custom prompt is set.
@@ -19,6 +19,10 @@ export default function SettingsRoute() {
 	const { data: mailbox } = useMailbox(mailboxId);
 	const updateMailboxMutation = useUpdateMailbox();
 	const backfillTriage = useBackfillTriage();
+	const {
+		data: triageStatus,
+		refetch: refetchTriageStatus,
+	} = useTriageStatus(mailboxId);
 
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
@@ -70,6 +74,14 @@ export default function SettingsRoute() {
 	const handleResetPrompt = () => {
 		setAgentPrompt("");
 	};
+
+	const triageStatusCards = [
+		{ label: "Total", value: triageStatus?.total },
+		{ label: "Classified", value: triageStatus?.classified },
+		{ label: "Processing", value: triageStatus?.processing },
+		{ label: "Failed", value: triageStatus?.error },
+		{ label: "Unclassified", value: triageStatus?.unclassified },
+	];
 
 	if (!mailbox) {
 		return (
@@ -188,6 +200,21 @@ export default function SettingsRoute() {
 								className="h-9 w-28 rounded-md border border-kumo-line bg-kumo-base px-2"
 							/>
 						</label>
+						<div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+							{triageStatusCards.map(({ label, value }) => (
+								<div
+									key={label}
+									className="rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2"
+								>
+									<div className="text-[11px] font-medium uppercase text-kumo-subtle">
+										{label}
+									</div>
+									<div className="mt-1 text-lg font-semibold text-kumo-default">
+										{typeof value === "number" ? value : "-"}
+									</div>
+								</div>
+							))}
+						</div>
 						<div className="flex items-center gap-2 pt-2">
 							<Button
 								variant="secondary"
@@ -201,10 +228,20 @@ export default function SettingsRoute() {
 									toastManager.add({
 										title: `Queued ${result.queued} emails for classification`,
 									});
+									void refetchTriageStatus();
+									window.setTimeout(() => void refetchTriageStatus(), 5_000);
 								}}
 								loading={backfillTriage.isPending}
 							>
 								Classify existing mail
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								icon={<ArrowCounterClockwiseIcon size={14} />}
+								onClick={() => void refetchTriageStatus()}
+							>
+								Refresh
 							</Button>
 							<span className="text-xs text-kumo-subtle">
 								Labels only; emails stay in their current folders.

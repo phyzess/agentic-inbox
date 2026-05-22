@@ -369,6 +369,10 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:id/classification", async (c: AppC
 	return c.json(await (c.var.mailboxStub as any).getClassification(c.req.param("id")!));
 });
 
+app.get("/api/v1/mailboxes/:mailboxId/triage/status", async (c: AppContext) => {
+	return c.json(await (c.var.mailboxStub as any).getClassificationStatus());
+});
+
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/classify", async (c: AppContext) => {
 	const { force } = ClassifyBody.parse(await c.req.json().catch(() => ({})));
 	const result = await (c.var.mailboxStub as any).classifyEmail(c.req.param("id")!, { force: force ?? true });
