@@ -55,6 +55,10 @@ const TOOL_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
 		label: "Updating label",
 		icon: <TagIcon size={14} weight="bold" />,
 	},
+	clear_label: {
+		label: "Clearing label",
+		icon: <TagIcon size={14} weight="bold" />,
+	},
 	explain_classification: {
 		label: "Explaining label",
 		icon: <TagIcon size={14} weight="bold" />,

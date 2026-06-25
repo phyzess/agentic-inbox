@@ -14,6 +14,10 @@ export interface MailboxSettings {
 	signature?: SignatureSettings;
 	autoReply?: { enabled: boolean; subject: string; message: string };
 	agentSystemPrompt?: string;
+	security?: {
+		allowedAccessEmails?: string[];
+		mcpScopes?: Partial<Record<McpScope, boolean>>;
+	};
 	classification?: {
 		enabled?: boolean;
 		autoDraftAfterClassify?: boolean;
@@ -23,11 +27,67 @@ export interface MailboxSettings {
 	};
 }
 
+export type McpScope = "read" | "organize" | "draft" | "send" | "delete";
+
 export interface Mailbox {
 	id: string;
 	email: string;
 	name: string;
 	settings?: MailboxSettings;
+}
+
+export type MailboxImportMode = "merge" | "replace";
+
+export interface MailboxImportResult {
+	status: "imported";
+	mode: MailboxImportMode;
+	settingsRestored: boolean;
+	purgedEmailCount: number;
+	purgedAttachmentCount: number;
+	importedFolders: number;
+	importedEmails: number;
+	importedLabels: number;
+	importedRules: number;
+	importedTriageEvents: number;
+	skippedAttachmentMetadata: number;
+}
+
+export interface DraftSaveResult {
+	id: string;
+	draft_id: string;
+	status: "draft";
+	subject: string;
+	recipient: string;
+	date: string;
+}
+
+export interface ComposeAttachment {
+	id: string;
+	filename: string;
+	type: string;
+	size: number;
+	content: string;
+	disposition: "attachment" | "inline";
+	contentId?: string;
+}
+
+export interface SetupCheck {
+	id: string;
+	label: string;
+	status: "ok" | "warning" | "error" | "unknown";
+	detail: string;
+}
+
+export interface SetupStatus {
+	status: "ready" | "needs_attention" | "action_required";
+	accessUserEmail?: string | null;
+	isLocalAccess?: boolean;
+	checks: SetupCheck[];
+}
+
+export interface AccessIdentity {
+	email?: string | null;
+	isLocalAccess?: boolean;
 }
 
 export interface Email {
@@ -139,6 +199,42 @@ export interface ClassificationRule {
 	status: "suggested" | "active" | "disabled";
 	created_at?: string;
 	updated_at?: string;
+}
+
+export type BulkEmailAction =
+	| "mark_read"
+	| "mark_unread"
+	| "star"
+	| "unstar"
+	| "archive"
+	| "spam"
+	| "trash"
+	| "restore"
+	| "move"
+	| "delete";
+
+export interface BulkEmailActionRequest {
+	action: BulkEmailAction;
+	emailIds?: string[];
+	filter?: {
+		folder?: string;
+		label?: string;
+	};
+	includeThreads?: boolean;
+	folderId?: string;
+	limit?: number;
+}
+
+export interface BulkEmailActionResult {
+	action: BulkEmailAction;
+	count: number;
+	emailIds: string[];
+	folderId?: string;
+	attachments?: Array<{
+		emailId: string;
+		id: string;
+		filename: string;
+	}>;
 }
 
 export interface ClassificationFeedback {

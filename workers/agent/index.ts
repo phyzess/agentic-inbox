@@ -28,6 +28,7 @@ import {
 	toolListLabels,
 	toolClassifyEmail,
 	toolApplyLabel,
+	toolClearLabel,
 	toolExplainClassification,
 	toolSuggestRule,
 	toolMarkEmailRead,
@@ -222,6 +223,21 @@ function createEmailTools(env: Env, mailboxId: string) {
 			},
 		}),
 
+		clear_label: defineTool({
+			description:
+				"Clear the smart label from an email and return it to Unclassified.",
+			parameters: z.object({
+				emailId: z.string().describe("The email ID"),
+				reason: z
+					.string()
+					.optional()
+					.describe("Optional reason for clearing the label"),
+			}),
+			execute: async ({ emailId, reason }): Promise<unknown> => {
+				return toolClearLabel(env, mailboxId, { emailId, reason });
+			},
+		}),
+
 		explain_classification: defineTool({
 			description:
 				"Explain the current smart label assignment, source, confidence, and reason for an email.",
@@ -313,7 +329,7 @@ function createEmailTools(env: Env, mailboxId: string) {
 
 		move_email: defineTool({
 			description:
-				"Move an email to a different folder (inbox, sent, draft, archive, trash).",
+				"Move an email to a different folder (inbox, sent, draft, archive, spam, trash).",
 			parameters: z.object({
 				emailId: z.string().describe("The email ID"),
 				folderId: z

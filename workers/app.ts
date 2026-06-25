@@ -8,6 +8,7 @@ import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
 import { EmailMCP } from "./mcp";
+import { getAccessContextFromRequest } from "./lib/access";
 import type { Env } from "./types";
 
 export { MailboxDO } from "./durableObject";
@@ -90,10 +91,24 @@ app.use("*", async (c, next) => {
 // Must be before API routes and React Router catch-all
 const mcpHandler = EmailMCP.serve("/mcp", { binding: "EMAIL_MCP" });
 app.all("/mcp", async (c) => {
-	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
+	const access = getAccessContextFromRequest(c.req.raw);
+	const ctxWithProps = Object.assign(c.executionCtx as ExecutionContext, {
+		props: {
+			accessUserEmail: access.userEmail,
+			accessLocalBypass: access.isLocalBypass,
+		},
+	});
+	return mcpHandler.fetch(c.req.raw, c.env, ctxWithProps);
 });
 app.all("/mcp/*", async (c) => {
-	return mcpHandler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
+	const access = getAccessContextFromRequest(c.req.raw);
+	const ctxWithProps = Object.assign(c.executionCtx as ExecutionContext, {
+		props: {
+			accessUserEmail: access.userEmail,
+			accessLocalBypass: access.isLocalBypass,
+		},
+	});
+	return mcpHandler.fetch(c.req.raw, c.env, ctxWithProps);
 });
 
 // Mount the API routes

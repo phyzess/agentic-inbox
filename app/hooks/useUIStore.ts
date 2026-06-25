@@ -60,6 +60,7 @@ export const useUIStore = create<UIState>((set, get) => ({
 			const isReplyOrForward = mode === "reply" || mode === "reply-all" || mode === "forward";
 			return {
 				isComposing: true,
+				isComposeModalOpen: false,
 				_previousEmailId: state.selectedEmailId,
 				// Keep selectedEmailId when replying/forwarding so the thread stays visible
 				selectedEmailId: isReplyOrForward ? state.selectedEmailId : null,
@@ -87,7 +88,10 @@ export const useUIStore = create<UIState>((set, get) => ({
 	openComposeModal: (options) =>
 		set({
 			composeOptions: options || { mode: "new", originalEmail: null },
+			isComposing: false,
 			isComposeModalOpen: true,
+			selectedEmailId: null,
+			_previousEmailId: null,
 		}),
 
 	closeComposeModal: () =>

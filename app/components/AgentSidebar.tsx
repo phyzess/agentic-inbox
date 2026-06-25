@@ -3,8 +3,9 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { Loader } from "@cloudflare/kumo";
-import { PlugsIcon, RobotIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, PlugsIcon, RobotIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
+import AgentWorkflowsPanel from "./AgentWorkflowsPanel";
 import MCPPanel from "./MCPPanel";
 
 function LazyAgentPanel() {
@@ -41,7 +42,7 @@ function LazyAgentPanel() {
 }
 
 export default function AgentSidebar() {
-	const [activeTab, setActiveTab] = useState<"agent" | "mcp">("agent");
+	const [activeTab, setActiveTab] = useState<"agent" | "work" | "mcp">("agent");
 
 	return (
 		<div className="flex flex-col h-full">
@@ -58,6 +59,18 @@ export default function AgentSidebar() {
 				>
 					<RobotIcon size={14} weight={activeTab === "agent" ? "fill" : "regular"} />
 					Agent
+				</button>
+				<button
+					type="button"
+					onClick={() => setActiveTab("work")}
+					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
+						activeTab === "work"
+							? "border-kumo-brand text-kumo-default"
+							: "border-transparent text-kumo-subtle hover:text-kumo-default"
+					}`}
+				>
+					<CheckCircleIcon size={14} weight={activeTab === "work" ? "fill" : "regular"} />
+					Work
 				</button>
 				<button
 					type="button"
@@ -78,6 +91,7 @@ export default function AgentSidebar() {
 				<div className={activeTab === "agent" ? "h-full" : "hidden"}>
 					<LazyAgentPanel />
 				</div>
+				{activeTab === "work" && <AgentWorkflowsPanel />}
 				{activeTab === "mcp" && <MCPPanel />}
 			</div>
 		</div>

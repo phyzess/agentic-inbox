@@ -11,14 +11,16 @@ import {
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	PlusIcon,
+	RobotIcon,
 	TagIcon,
 	TrashIcon,
 	TrayIcon,
+	WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import { NavLink, useLocation, useNavigate, useParams } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
-import { useCreateFolder, useDeleteFolder, useFolders } from "~/queries/folders";
+import { useCreateFolder, useDeleteFolder, useFolders, useUpdateFolder } from "~/queries/folders";
 import { useLabels } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -28,6 +30,7 @@ const FOLDER_ICONS: Record<string, React.ReactNode> = {
 	[Folders.SENT]: <PaperPlaneTiltIcon size={18} weight="regular" />,
 	[Folders.DRAFT]: <FileIcon size={18} weight="regular" />,
 	[Folders.ARCHIVE]: <ArchiveIcon size={18} weight="regular" />,
+	[Folders.SPAM]: <WarningCircleIcon size={18} weight="regular" />,
 	[Folders.TRASH]: <TrashIcon size={18} weight="regular" />,
 };
 
@@ -36,6 +39,7 @@ const SYSTEM_FOLDER_LINKS = [
 	{ id: Folders.SENT, label: "Sent" },
 	{ id: Folders.DRAFT, label: "Drafts" },
 	{ id: Folders.ARCHIVE, label: "Archive" },
+	{ id: Folders.SPAM, label: "Spam" },
 	{ id: Folders.TRASH, label: "Trash" },
 ];
 
@@ -77,16 +81,20 @@ function FolderLink({
 
 export default function Sidebar() {
 	const { mailboxId, folder } = useParams<{ mailboxId: string; folder?: string }>();
+	const location = useLocation();
 	const navigate = useNavigate();
 	const toastManager = useKumoToastManager();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const { data: labels = [] } = useLabels(mailboxId);
 	const createFolderMutation = useCreateFolder();
+	const updateFolderMutation = useUpdateFolder();
 	const deleteFolderMutation = useDeleteFolder();
-	const { startCompose, closeSidebar } = useUIStore();
+	const { startCompose, openComposeModal, closeSidebar } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
+	const [renameFolder, setRenameFolder] = useState<{ id: string; name: string } | null>(null);
+	const [renameFolderName, setRenameFolderName] = useState("");
 
 	const customFolders = useMemo(
 		() =>
@@ -134,6 +142,33 @@ export default function Sidebar() {
 		);
 	};
 
+	const openRenameFolder = (target: { id: string; name: string }) => {
+		setRenameFolder(target);
+		setRenameFolderName(target.name);
+	};
+
+	const handleRenameFolder = (event: React.FormEvent) => {
+		event.preventDefault();
+		const nextName = renameFolderName.trim();
+		if (!mailboxId || !renameFolder || !nextName) return;
+		updateFolderMutation.mutate(
+			{ mailboxId, id: renameFolder.id, name: nextName },
+			{
+				onSuccess: () => {
+					toastManager.add({ title: `Renamed to ${nextName}` });
+					setRenameFolder(null);
+					setRenameFolderName("");
+				},
+				onError: () => {
+					toastManager.add({
+						title: `Failed to rename ${renameFolder.name}`,
+						variant: "error",
+					});
+				},
+			},
+		);
+	};
+
 	const displayName = useMemo(() => {
 		if (!currentMailbox) return mailboxId?.split("@")[0] || "Mailbox";
 		// Prefer settings.fromName > name > local part of email
@@ -148,6 +183,22 @@ export default function Sidebar() {
 
 	const handleNavClick = () => {
 		// Close mobile sidebar on navigation
+		closeSidebar();
+	};
+
+	const isSplitComposeRoute = useMemo(() => {
+		return (
+			/^\/mailbox\/[^/]+\/(?:emails|labels)\//.test(location.pathname) ||
+			/^\/mailbox\/[^/]+\/(?:search|review-drafts)$/.test(location.pathname)
+		);
+	}, [location.pathname]);
+
+	const handleComposeClick = () => {
+		if (isSplitComposeRoute) {
+			startCompose();
+		} else {
+			openComposeModal();
+		}
 		closeSidebar();
 	};
 
@@ -181,11 +232,31 @@ export default function Sidebar() {
 				<Button
 					variant="primary"
 					icon={<PencilSimpleIcon size={16} />}
-					onClick={() => startCompose()}
+					onClick={handleComposeClick}
 					className="w-full"
 				>
 					Compose
 				</Button>
+			</div>
+
+			<div className="px-2 pb-3">
+				<NavLink
+					to={`/mailbox/${mailboxId}/review-drafts`}
+					onClick={handleNavClick}
+					className={({ isActive }) =>
+						`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+							isActive
+								? "bg-kumo-fill font-semibold text-kumo-default"
+								: "text-kumo-strong hover:bg-kumo-tint"
+						}`
+					}
+				>
+					<RobotIcon size={18} weight="regular" className="shrink-0" />
+					<span className="min-w-0 flex-1 truncate">Review drafts</span>
+					{getUnreadCount(Folders.DRAFT) > 0 && (
+						<Badge variant="secondary">{getUnreadCount(Folders.DRAFT)}</Badge>
+					)}
+				</NavLink>
 			</div>
 
 			{/* Navigation */}
@@ -256,6 +327,18 @@ export default function Sidebar() {
 										onClick={handleNavClick}
 									/>
 								</div>
+								<Tooltip content="Rename folder" asChild>
+									<Button
+										variant="ghost"
+										shape="square"
+										size="sm"
+										icon={<PencilSimpleIcon size={15} />}
+										onClick={() => openRenameFolder(folder)}
+										disabled={updateFolderMutation.isPending}
+										aria-label={`Rename ${folder.name}`}
+										className="shrink-0 text-kumo-subtle"
+									/>
+								</Tooltip>
 								<Tooltip content="Delete folder" asChild>
 									<Button
 										variant="ghost"
@@ -326,6 +409,50 @@ export default function Sidebar() {
 								disabled={!newFolderName.trim()}
 							>
 								Create
+							</Button>
+						</div>
+					</form>
+				</Dialog>
+			</Dialog.Root>
+			<Dialog.Root
+				open={Boolean(renameFolder)}
+				onOpenChange={(open) => {
+					if (!open) {
+						setRenameFolder(null);
+						setRenameFolderName("");
+					}
+				}}
+			>
+				<Dialog size="sm" className="p-6">
+					<Dialog.Title className="text-base font-semibold mb-4">
+						Rename folder
+					</Dialog.Title>
+					<form onSubmit={handleRenameFolder} className="space-y-4">
+						<Input
+							label="Folder name"
+							placeholder="e.g. Projects"
+							value={renameFolderName}
+							onChange={(e) => setRenameFolderName(e.target.value)}
+							required
+						/>
+						<div className="flex justify-end gap-2">
+							<Dialog.Close
+								render={(props) => (
+									<Button {...props} variant="secondary">
+										Cancel
+									</Button>
+								)}
+							/>
+							<Button
+								type="submit"
+								variant="primary"
+								loading={updateFolderMutation.isPending}
+								disabled={
+									!renameFolderName.trim() ||
+									renameFolderName.trim() === renameFolder?.name
+								}
+							>
+								Rename
 							</Button>
 						</div>
 					</form>

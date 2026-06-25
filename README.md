@@ -37,14 +37,17 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 ## Features
 
-- **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
+- **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, attachments, Spam, bulk read/archive/report spam/move/trash actions, restore, empty Trash, and mailbox export/import
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
-- **Built-in AI agent** — Side panel with email and triage tools for reading, searching, classifying, drafting, and sending
+- **Built-in AI agent** — Side panel with chat, workflow review, and triage tools for reading, searching, classifying, drafting, and sending
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
+- **Draft review queue** — AI and manual drafts can be reviewed from a dedicated queue before editing, sending, or discarding
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
+- **Setup and diagnostics** — The app shows deployment checks for Access, R2, Email Service, Workers AI, domains, and Email Routing, plus a self-test email action
 - **Smart classification** — Incoming mail is labeled with AI triage labels such as Action needed, Waiting, Newsletter, Notification, Transaction, Personal, and Low priority. Mail can optionally be auto-filed into matching label folders after classification.
 - **Correctable triage rules** — Manual label corrections are recorded and can create suggested sender/domain rules that remain inactive until you confirm them.
-- **Triage control center** — Settings includes rule confirmation, bulk filing/mark-read actions, recent triage activity, and undo for recorded auto-file moves.
+- **Triage control center** — Settings includes health metrics, rule confirmation, bulk filing/mark-read actions, recent triage activity, and undo for recorded auto-file moves.
+- **Mailbox access controls** — Mailboxes can optionally restrict UI, API, and MCP access to specific Cloudflare Access user emails and per-scope MCP permissions.
 
 ## Stack
 
@@ -79,7 +82,7 @@ npm run deploy
 - [Workers AI](https://developers.cloudflare.com/workers-ai/) enabled (for the agent)
 - [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/) configured for deployed/shared environments (required in production)
 
-Any user who passes the shared Cloudflare Access policy can access all mailboxes in this app by design. This includes the MCP server at `/mcp` -- external AI tools (Claude Code, Cursor, etc.) connected via MCP can operate on any mailbox by passing a `mailboxId` parameter. There is no per-mailbox authorization; the Cloudflare Access policy is the single trust boundary.
+By default, any user who passes the shared Cloudflare Access policy can access all mailboxes in this app. To narrow access, configure a mailbox allowlist in Settings. When an allowlist is set, UI routes, API routes, mailbox listing, and MCP tools deny other Access users for that mailbox. External AI tools connected via `/mcp` still use the same Access-authenticated identity and mailbox allowlists.
 
 ## Smart classification safety
 

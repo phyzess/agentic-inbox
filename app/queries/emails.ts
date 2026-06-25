@@ -4,7 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
-import type { Email } from "~/types";
+import type { BulkEmailActionRequest, ComposeAttachment, Email } from "~/types";
 import { queryKeys } from "./keys";
 
 // ---------- Types ----------
@@ -98,8 +98,15 @@ function useInvalidateEmailData() {
 	const qc = useQueryClient();
 	return (mailboxId: string) => {
 		qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+		qc.invalidateQueries({ queryKey: ["search", mailboxId] });
 		qc.invalidateQueries({
 			queryKey: queryKeys.folders.list(mailboxId),
+		});
+		qc.invalidateQueries({
+			queryKey: queryKeys.labels.list(mailboxId),
+		});
+		qc.invalidateQueries({
+			queryKey: queryKeys.triage.activity(mailboxId),
 		});
 	};
 }
@@ -180,6 +187,7 @@ export function useUpdateEmail() {
 		onSettled: (_data, _err, { mailboxId }) => {
 			// Always refetch to ensure server truth
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+			qc.invalidateQueries({ queryKey: ["search", mailboxId] });
 			qc.invalidateQueries({
 				queryKey: queryKeys.folders.list(mailboxId),
 			});
@@ -229,6 +237,18 @@ export function useMoveEmail() {
 	});
 }
 
+export function useBulkEmailAction() {
+	const invalidate = useInvalidateEmailData();
+	return useMutation({
+		mutationFn: ({
+			mailboxId,
+			body,
+		}: { mailboxId: string; body: BulkEmailActionRequest }) =>
+			api.bulkEmailAction(mailboxId, body),
+		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),
+	});
+}
+
 export function useSaveDraft() {
 	const invalidate = useInvalidateEmailData();
 	return useMutation({
@@ -246,6 +266,7 @@ export function useSaveDraft() {
 				in_reply_to?: string;
 				thread_id?: string;
 				draft_id?: string;
+				attachments?: Omit<ComposeAttachment, "id" | "size">[];
 			};
 		}) => api.saveDraft(mailboxId, draft),
 		onSuccess: (_data, { mailboxId }) => invalidate(mailboxId),

@@ -8,9 +8,11 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
+const useRemoteBindings = process.env.CLOUDFLARE_REMOTE_BINDINGS !== "false";
+
 export default defineConfig({
   plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    cloudflare({ viteEnvironment: { name: "ssr" }, remoteBindings: useRemoteBindings }),
     tailwindcss(),
     reactRouter(),
     tsconfigPaths(),

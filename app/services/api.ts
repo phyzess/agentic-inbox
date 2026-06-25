@@ -2,7 +2,24 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import type { ClassificationResult, ClassificationRule, Email, Folder, Label, Mailbox, TriageEvent, TriageStatus } from "~/types";
+import type {
+	AccessIdentity,
+	BulkEmailActionRequest,
+	BulkEmailActionResult,
+	ClassificationResult,
+	ComposeAttachment,
+	ClassificationRule,
+	DraftSaveResult,
+	Email,
+	Folder,
+	Label,
+	Mailbox,
+	MailboxImportMode,
+	MailboxImportResult,
+	SetupStatus,
+	TriageEvent,
+	TriageStatus,
+} from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -98,6 +115,10 @@ const api = {
 	// Config
 	getConfig: () =>
 		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
+	getSetupStatus: () =>
+		get<SetupStatus>("/api/v1/setup/status"),
+	getAccessIdentity: () =>
+		get<AccessIdentity>("/api/v1/access/identity"),
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),
@@ -109,6 +130,17 @@ const api = {
 		put<Mailbox>(`/api/v1/mailboxes/${mailboxId}`, { settings }),
 	deleteMailbox: (mailboxId: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}`),
+	exportMailbox: (mailboxId: string) =>
+		get<Blob>(`/api/v1/mailboxes/${mailboxId}/export`, { responseType: "blob" }),
+	importMailbox: (
+		mailboxId: string,
+		data: Record<string, unknown>,
+		mode: MailboxImportMode,
+	) =>
+		post<MailboxImportResult>(`/api/v1/mailboxes/${mailboxId}/import`, {
+			mode,
+			data,
+		}),
 
 	// Emails
 	listEmails: (mailboxId: string, params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
@@ -121,11 +153,13 @@ const api = {
 		put<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
 	deleteEmail: (mailboxId: string, id: string) =>
 		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
+	bulkEmailAction: (mailboxId: string, body: BulkEmailActionRequest) =>
+		post<BulkEmailActionResult>(`/api/v1/mailboxes/${mailboxId}/emails/bulk`, body),
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, { folderId }),
 	classifyEmail: (mailboxId: string, id: string, force = true) =>
 		post<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/classify`, { force }),
-	applyLabel: (mailboxId: string, id: string, labelId: string, reason?: string) =>
+	applyLabel: (mailboxId: string, id: string, labelId: string | null, reason?: string) =>
 		post<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/label`, { labelId, reason }),
 	getClassification: (mailboxId: string, id: string) =>
 		get<ClassificationResult>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/classification`),
@@ -156,8 +190,9 @@ const api = {
 			in_reply_to?: string;
 			thread_id?: string;
 			draft_id?: string;
+			attachments?: Omit<ComposeAttachment, "id" | "size">[];
 		},
-	) => post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
+	) => post<DraftSaveResult>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
 	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>

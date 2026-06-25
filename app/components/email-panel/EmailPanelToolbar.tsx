@@ -5,6 +5,7 @@
 import { Button, Tooltip } from "@cloudflare/kumo";
 import { useEffect, useRef, useState } from "react";
 import {
+	ArchiveIcon,
 	ArrowBendUpLeftIcon,
 	ArrowBendUpRightIcon,
 	ArrowLeftIcon,
@@ -17,6 +18,8 @@ import {
 	PencilSimpleIcon,
 	StarIcon,
 	TrashIcon,
+	TrayIcon,
+	WarningCircleIcon,
 	XIcon,
 } from "@phosphor-icons/react";
 import type { Folder, Email } from "~/types";
@@ -36,8 +39,13 @@ interface EmailPanelToolbarProps {
 	onForward: () => void;
 	onToggleStar: () => void;
 	onToggleRead: () => void;
+	restoreLabel?: string;
+	onRestore?: () => void;
+	onArchive?: () => void;
+	onReportSpam?: () => void;
 	onMove: (folderId: string) => void;
 	onViewSource: () => void;
+	deleteLabel: string;
 	onDelete: () => void;
 }
 
@@ -55,8 +63,13 @@ export default function EmailPanelToolbar({
 	onForward,
 	onToggleStar,
 	onToggleRead,
+	restoreLabel,
+	onRestore,
+	onArchive,
+	onReportSpam,
 	onMove,
 	onViewSource,
+	deleteLabel,
 	onDelete,
 }: EmailPanelToolbarProps) {
 	return (
@@ -156,7 +169,48 @@ export default function EmailPanelToolbar({
 				/>
 			</Tooltip>
 
-			<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+			{restoreLabel && onRestore && (
+				<Tooltip content={restoreLabel} side="bottom" asChild>
+					<Button
+						variant="ghost"
+						shape="square"
+						size="sm"
+						icon={<TrayIcon size={18} />}
+						onClick={onRestore}
+						aria-label={restoreLabel}
+					/>
+				</Tooltip>
+			)}
+
+			{onArchive && (
+				<Tooltip content="Archive" side="bottom" asChild>
+					<Button
+						variant="ghost"
+						shape="square"
+						size="sm"
+						icon={<ArchiveIcon size={18} />}
+						onClick={onArchive}
+						aria-label="Archive"
+					/>
+				</Tooltip>
+			)}
+
+			{onReportSpam && (
+				<Tooltip content="Report spam" side="bottom" asChild>
+					<Button
+						variant="ghost"
+						shape="square"
+						size="sm"
+						icon={<WarningCircleIcon size={18} />}
+						onClick={onReportSpam}
+						aria-label="Report spam"
+					/>
+				</Tooltip>
+			)}
+
+			{moveToFolders.length > 0 && (
+				<MoveToFolderMenu folders={moveToFolders} onMove={onMove} />
+			)}
 
 			<div className="ml-auto flex items-center gap-0.5">
 				<Tooltip content="View source" side="bottom" asChild>
@@ -169,14 +223,14 @@ export default function EmailPanelToolbar({
 						aria-label="View source"
 					/>
 				</Tooltip>
-				<Tooltip content="Delete" side="bottom" asChild>
+				<Tooltip content={deleteLabel} side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						size="sm"
 						icon={<TrashIcon size={18} />}
 						onClick={onDelete}
-						aria-label="Delete"
+						aria-label={deleteLabel}
 					/>
 				</Tooltip>
 				<Tooltip content="Close" side="bottom" asChild>

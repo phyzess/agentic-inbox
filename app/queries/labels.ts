@@ -70,7 +70,7 @@ export function useApplyLabel() {
 			emailId,
 			labelId,
 			reason,
-		}: { mailboxId: string; emailId: string; labelId: string; reason?: string }) =>
+		}: { mailboxId: string; emailId: string; labelId: string | null; reason?: string }) =>
 			api.applyLabel(mailboxId, emailId, labelId, reason),
 		onSuccess: (_data, { mailboxId }) => invalidateTriage(qc, mailboxId),
 	});

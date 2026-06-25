@@ -34,4 +34,6 @@ export const queryKeys = {
 			["search", mailboxId, query, page] as const,
 	},
 	config: ["config"] as const,
+	setup: ["setup"] as const,
+	accessIdentity: ["access-identity"] as const,
 };

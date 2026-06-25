@@ -54,6 +54,7 @@ const TOOLS = [
 	{ name: "search_emails", desc: "Search emails by query" },
 	{ name: "classify_email", desc: "Classify an email" },
 	{ name: "apply_label", desc: "Correct a smart label" },
+	{ name: "clear_label", desc: "Clear a smart label" },
 	{ name: "explain_classification", desc: "Explain a label" },
 	{ name: "suggest_rule", desc: "Suggest a rule" },
 	{ name: "draft_reply", desc: "Draft a reply to an email" },
@@ -61,6 +62,7 @@ const TOOLS = [
 	{ name: "send_email", desc: "Send a new email" },
 	{ name: "mark_email_read", desc: "Mark email as read/unread" },
 	{ name: "move_email", desc: "Move email to a folder" },
+	{ name: "delete_email", desc: "Permanently delete an email" },
 ];
 
 export default function MCPPanel() {
@@ -68,6 +70,17 @@ export default function MCPPanel() {
 	const baseUrl =
 		typeof window !== "undefined" ? window.location.origin : "https://your-app.workers.dev";
 	const mcpUrl = `${baseUrl}/mcp`;
+	const clientConfig = JSON.stringify(
+		{
+			mcpServers: {
+				"agentic-inbox": {
+					url: mcpUrl,
+				},
+			},
+		},
+		null,
+		2,
+	);
 
 	return (
 		<div className="flex flex-col h-full">
@@ -113,6 +126,29 @@ export default function MCPPanel() {
 							{mcpUrl}
 						</div>
 					</div>
+				</div>
+
+				{/* Client config */}
+				<div className="space-y-1.5">
+					<div className="flex items-center justify-between">
+						<label className="text-xs font-medium text-kumo-strong block">
+							Client config
+						</label>
+						<CopyButton text={clientConfig} />
+					</div>
+					<pre className="max-h-36 overflow-auto rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-[11px] leading-relaxed text-kumo-default">
+						{clientConfig}
+					</pre>
+				</div>
+
+				{/* Scope */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2.5">
+					<div className="text-xs font-medium text-kumo-default">
+						Permission scope
+					</div>
+					<p className="mt-1 text-xs leading-relaxed text-kumo-subtle">
+						Connected clients use the same Cloudflare Access policy as this app. The current mailbox is {mailboxId}, but MCP tools accept a mailboxId parameter and can operate on any mailbox allowed by this deployment.
+					</p>
 				</div>
 
 				{/* Available tools */}

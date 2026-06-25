@@ -10,11 +10,18 @@
 import { createMiddleware } from "hono/factory";
 import type { MailboxDO } from "../durableObject";
 import type { Env } from "../types";
+import {
+	canAccessMailbox,
+	getAccessContextFromRequest,
+	type AccessContext,
+} from "./access";
 
 export type MailboxContext = {
 	Bindings: Env;
 	Variables: {
 		mailboxStub: DurableObjectStub<MailboxDO>;
+		mailboxSettings: Record<string, unknown>;
+		access: AccessContext;
 	};
 };
 
@@ -25,9 +32,14 @@ export const requireMailbox = createMiddleware<MailboxContext>(async (c, next) =
 
 	// Verify mailbox exists
 	const key = `mailboxes/${mailboxId}.json`;
-	const obj = await c.env.BUCKET.head(key);
+	const obj = await c.env.BUCKET.get(key);
 	if (!obj) {
 		return c.json({ error: "Not found" }, 404);
+	}
+	const settings = await obj.json<Record<string, unknown>>();
+	const access = getAccessContextFromRequest(c.req.raw);
+	if (!canAccessMailbox(settings, access)) {
+		return c.json({ error: "Mailbox access denied" }, 403);
 	}
 
 	// Instantiate DO stub
@@ -36,6 +48,8 @@ export const requireMailbox = createMiddleware<MailboxContext>(async (c, next) =
 	const stub = ns.get(id);
 
 	c.set("mailboxStub", stub);
-	
+	c.set("mailboxSettings", settings);
+	c.set("access", access);
+
 	await next();
 });

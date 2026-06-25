@@ -6,6 +6,7 @@ import { Banner, Button, Dialog, Input, Text } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
 import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import ComposeAttachmentPicker from "./ComposeAttachmentPicker";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -30,10 +31,17 @@ export default function ComposeEmail() {
 		setSubject,
 		body,
 		setBody,
+		attachments,
+		isAddingAttachments,
+		handleAddAttachments,
+		removeAttachment,
 		error,
 		isSavingDraft,
 		isSending,
+		isDiscarding,
 		formTitle,
+		handleClose,
+		handleDiscard,
 		handleSaveDraft,
 		handleSend,
 	} = useComposeForm(mailboxId, folder);
@@ -41,7 +49,9 @@ export default function ComposeEmail() {
 	return (
 		<Dialog.Root
 			open={isComposeModalOpen}
-			onOpenChange={(open) => !open && !isSending && closeComposeModal()}
+			onOpenChange={(open) => {
+				if (!open) void handleClose(closeComposeModal);
+			}}
 		>
 			<Dialog size="lg" className="p-6 max-h-[85vh] overflow-y-auto">
 				<Dialog.Title className="text-lg font-semibold mb-5">
@@ -106,13 +116,21 @@ export default function ComposeEmail() {
 						</Text>
 						<RichTextEditor value={body} onChange={setBody} />
 					</div>
+					<ComposeAttachmentPicker
+						attachments={attachments}
+						isAdding={isAddingAttachments}
+						disabled={isSending || isSavingDraft || isDiscarding}
+						onAddFiles={(files) => void handleAddAttachments(files)}
+						onRemove={removeAttachment}
+					/>
 					<div className="flex justify-between items-center pt-2">
 						<Button
 							type="button"
 							variant="ghost"
 							size="sm"
-							onClick={closeComposeModal}
-							disabled={isSending}
+							onClick={() => void handleDiscard(closeComposeModal)}
+							disabled={isSending || isSavingDraft || isAddingAttachments}
+							loading={isDiscarding}
 						>
 							Discard
 						</Button>
@@ -122,7 +140,7 @@ export default function ComposeEmail() {
 								variant="secondary"
 								size="sm"
 								loading={isSavingDraft}
-								disabled={isSending}
+								disabled={isSending || isDiscarding || isAddingAttachments}
 								icon={<FloppyDiskIcon size={14} />}
 								onClick={handleSaveDraft}
 							>
@@ -133,7 +151,7 @@ export default function ComposeEmail() {
 								variant="primary"
 								size="sm"
 								loading={isSending}
-								disabled={isSavingDraft || isSending}
+								disabled={isSavingDraft || isSending || isDiscarding || isAddingAttachments}
 								icon={<PaperPlaneTiltIcon size={14} />}
 							>
 								{isSending ? "Sending..." : "Send"}

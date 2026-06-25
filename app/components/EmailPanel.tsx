@@ -13,12 +13,12 @@ import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
 import api from "~/services/api";
-import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
+import { useBulkEmailAction, useDeleteEmail, useEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
 import { useApplyLabel, useClassifyEmail, useConfirmRule, useDisableRule, useLabels, useRules } from "~/queries/labels";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
-import type { Email, Folder, Mailbox } from "~/types";
+import type { BulkEmailAction, Email, Folder, Mailbox } from "~/types";
 
 function EmailPanelSkeleton() {
 	return (
@@ -30,6 +30,45 @@ function EmailPanelSkeleton() {
 	);
 }
 
+function emailRuleTarget(email: Email, field: string) {
+	switch (field) {
+		case "sender":
+			return email.sender;
+		case "sender_domain":
+			return email.sender.split("@")[1] || "";
+		case "recipient":
+			return email.recipient;
+		case "subject":
+			return email.subject;
+		case "body":
+			return email.body || "";
+		case "list_id":
+			return email.raw_headers || "";
+		default:
+			return "";
+	}
+}
+
+function ruleMatchesEmail(
+	email: Email,
+	rule: { field: string; operator: string; value: string },
+) {
+	const value = rule.value.toLowerCase().trim();
+	const target = emailRuleTarget(email, rule.field).toLowerCase();
+	if (!value || !target) return false;
+
+	switch (rule.operator) {
+		case "equals":
+			return target.trim() === value;
+		case "contains":
+			return target.includes(value);
+		case "starts_with":
+			return target.trim().startsWith(value);
+		default:
+			return false;
+	}
+}
+
 export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { mailboxId, folder } = useParams<{ mailboxId: string; folder: string }>();
 	const { data: email } = useEmail(mailboxId, emailId) as { data?: Email };
@@ -38,7 +77,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 	const updateEmail = useUpdateEmail();
 	const deleteEmailMut = useDeleteEmail();
-	const moveEmailMut = useMoveEmail();
+	const bulkEmailAction = useBulkEmailAction();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
 	const { data: folders = [] } = useFolders(mailboxId) as { data?: Folder[] };
@@ -57,7 +96,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const [sourceViewEmail, setSourceViewEmail] = useState<Email | null>(null);
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 	const [previewImage, setPreviewImage] = useState<{ url: string; filename: string } | null>(null);
-	const isDraftFolder = folder === Folders.DRAFT;
+	const isDraftFolder = folder === Folders.DRAFT || email?.folder_id === Folders.DRAFT;
 
 	const threadReplies = useMemo(() => {
 		if (!threadRepliesRaw || !email) return [];
@@ -90,14 +129,113 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 		return nonDrafts.length > 0 ? nonDrafts[0] : email;
 	}, [allMessages, draftMessageIds, currentMailbox?.email, email]);
 
-	const moveToFolders = useMemo(() => { const cur = folder || email?.folder_id; return folders.filter((f) => f.id !== cur); }, [folders, folder, email?.folder_id]);
-	const suggestedRules = useMemo(() => rules.filter((rule) => rule.status === "suggested"), [rules]);
+	const activeFolderId = email?.folder_id || folder;
+	const moveToFolders = useMemo(() => {
+		const cur = activeFolderId;
+		return folders.filter(
+			(f) =>
+				f.id !== cur &&
+				f.id !== Folders.SENT &&
+				f.id !== Folders.DRAFT,
+		);
+	}, [folders, activeFolderId]);
+	const suggestedRules = useMemo(() => {
+		const currentLabelId = email?.labels?.[0]?.id;
+		if (!email || !currentLabelId) return [];
+		return rules.filter(
+			(rule) =>
+				rule.status === "suggested" &&
+				rule.label_id === currentLabelId &&
+				ruleMatchesEmail(email, rule),
+		);
+	}, [email, rules]);
 
 	if (!email) return <EmailPanelSkeleton />;
 
+	const hasThread = allMessages.length > 1;
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
-	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
-	const handleDelete = () => { if (mailboxId) { if (!window.confirm("Are you sure you want to delete this email?")) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
+	const runThreadAwareAction = async (
+		action: BulkEmailAction,
+		options: { folderId?: string; confirmMessage?: string; closeOnSuccess?: boolean } = {},
+	) => {
+		if (!mailboxId) return;
+		if (options.confirmMessage && !window.confirm(options.confirmMessage)) return;
+
+		try {
+			const result = await bulkEmailAction.mutateAsync({
+				mailboxId,
+				body: {
+					action,
+					emailIds: [email.id],
+					filter: activeFolderId ? { folder: activeFolderId } : undefined,
+					includeThreads: hasThread,
+					folderId: options.folderId,
+				},
+			});
+			const count = result.count;
+			const labels: Record<BulkEmailAction, string> = {
+				mark_read: "marked read",
+				mark_unread: "marked unread",
+				star: "starred",
+				unstar: "unstarred",
+				archive: "archived",
+				spam: "moved to Spam",
+				trash: "moved to Trash",
+				restore: "moved to Inbox",
+				move: options.folderId === Folders.INBOX ? "moved to Inbox" : "moved",
+				delete: "permanently deleted",
+			};
+			toastManager.add({
+				title: `${count} email${count === 1 ? "" : "s"} ${labels[action]}`,
+			});
+			if (options.closeOnSuccess !== false) closePanel();
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : "Email action failed";
+			toastManager.add({ title: message, variant: "error" });
+		}
+	};
+	const handleMove = (folderId: string) => {
+		void runThreadAwareAction("move", { folderId });
+	};
+	const restoreLabel =
+		activeFolderId === Folders.SPAM
+			? "Not spam"
+			: activeFolderId === Folders.ARCHIVE || activeFolderId === Folders.TRASH
+				? "Move to Inbox"
+				: undefined;
+	const canArchive =
+		!isDraftFolder &&
+		activeFolderId !== Folders.ARCHIVE &&
+		activeFolderId !== Folders.SPAM &&
+		activeFolderId !== Folders.TRASH &&
+		activeFolderId !== Folders.SENT;
+	const canReportSpam =
+		!isDraftFolder &&
+		activeFolderId !== Folders.SPAM &&
+		activeFolderId !== Folders.TRASH &&
+		activeFolderId !== Folders.SENT;
+	const deleteLabel = isDraftFolder
+		? "Discard draft"
+		: activeFolderId === Folders.TRASH
+			? "Delete forever"
+			: "Move to Trash";
+	const handleDelete = () => {
+		if (!mailboxId) return;
+		if (isDraftFolder) {
+			if (!window.confirm("Discard this draft?")) return;
+			deleteEmailMut.mutate({ mailboxId, id: email.id });
+			toastManager.add({ title: "Draft discarded" });
+			closePanel();
+			return;
+		}
+		if (email.folder_id === Folders.TRASH || folder === Folders.TRASH) {
+			void runThreadAwareAction("delete", {
+				confirmMessage: "Permanently delete this email?",
+			});
+			return;
+		}
+		void runThreadAwareAction("trash");
+	};
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
@@ -145,8 +283,6 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 		} finally { setIsSending(false); }
 	};
 
-	const hasThread = allMessages.length > 1;
-
 	return (
 		<div className="flex flex-col h-full">
 			<EmailPanelToolbar
@@ -170,16 +306,26 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				onForward={() => startCompose({ mode: "forward", originalEmail: email })}
 				onToggleStar={toggleStar}
 				onToggleRead={() => {
-					if (mailboxId) {
-						updateEmail.mutate({
-							mailboxId,
-							id: email.id,
-							data: { read: !email.read },
+					if (!mailboxId) return;
+					if (hasThread) {
+						void runThreadAwareAction(email.read ? "mark_unread" : "mark_read", {
+							closeOnSuccess: false,
 						});
+						return;
 					}
+					updateEmail.mutate({
+						mailboxId,
+						id: email.id,
+						data: { read: !email.read },
+					});
 				}}
+				restoreLabel={restoreLabel}
+				onRestore={restoreLabel ? () => void runThreadAwareAction("restore") : undefined}
+				onArchive={canArchive ? () => void runThreadAwareAction("archive") : undefined}
+				onReportSpam={canReportSpam ? () => void runThreadAwareAction("spam") : undefined}
 				onMove={handleMove}
 				onViewSource={() => setSourceViewEmail(email)}
+				deleteLabel={deleteLabel}
 				onDelete={handleDelete}
 			/>
 
@@ -214,16 +360,19 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 						className="h-8 rounded-md border border-kumo-line bg-kumo-base px-2 text-sm text-kumo-default"
 						value={email.labels?.[0]?.id || ""}
 						onChange={(event) => {
-							if (!mailboxId || !event.target.value) return;
+							if (!mailboxId) return;
+							const labelId = event.target.value || null;
 							applyLabel.mutate({
 								mailboxId,
 								emailId: email.id,
-								labelId: event.target.value,
-								reason: "Changed from the email detail panel.",
+								labelId,
+								reason: labelId
+									? "Changed from the email detail panel."
+									: "Cleared from the email detail panel.",
 							});
 						}}
 					>
-						<option value="">Choose label</option>
+						<option value="">Unclassified</option>
 						{labels.map((label) => (
 							<option key={label.id} value={label.id}>
 								{label.name}

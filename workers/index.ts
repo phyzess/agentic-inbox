@@ -21,6 +21,11 @@ import { Folders } from "../shared/folders";
 import { DEFAULT_AUTO_FILE_LABEL_IDS, DEFAULT_SMART_LABEL_IDS } from "../shared/labels";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import {
+	canAccessMailbox,
+	getAccessContextFromRequest,
+	securitySettings,
+} from "./lib/access";
 
 type AppContext = Context<MailboxContext>;
 
@@ -32,6 +37,14 @@ const CreateMailboxBody = z.object({
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
 
+const AttachmentBody = z.object({
+	content: z.string(),
+	filename: z.string(),
+	type: z.string().default("application/octet-stream"),
+	disposition: z.enum(["attachment", "inline"]).default("attachment"),
+	contentId: z.string().optional(),
+});
+
 const DraftBody = z.object({
 	to: z.string().optional(),
 	cc: z.string().optional(),
@@ -41,10 +54,11 @@ const DraftBody = z.object({
 	in_reply_to: z.string().optional(),
 	thread_id: z.string().optional(),
 	draft_id: z.string().optional(),
+	attachments: z.array(AttachmentBody).optional(),
 });
 
 const ApplyLabelBody = z.object({
-	labelId: z.string().min(1),
+	labelId: z.union([z.string().min(1), z.null()]),
 	reason: z.string().optional(),
 });
 
@@ -62,6 +76,34 @@ const BackfillBody = z.object({
 const BulkLabelBody = z.object({
 	labelId: z.string().min(1),
 	limit: z.number().min(1).max(100).optional(),
+});
+
+const BulkEmailActionBody = z.object({
+	action: z.enum([
+		"mark_read",
+		"mark_unread",
+		"star",
+		"unstar",
+		"archive",
+		"spam",
+		"trash",
+		"restore",
+		"move",
+		"delete",
+	]),
+	emailIds: z.array(z.string().min(1)).max(1000).optional(),
+	filter: z.object({
+		folder: z.string().optional(),
+		label: z.string().optional(),
+	}).optional(),
+	includeThreads: z.boolean().optional(),
+	folderId: z.string().optional(),
+	limit: z.number().min(1).max(1000).optional(),
+});
+
+const ImportMailboxBody = z.object({
+	mode: z.enum(["merge", "replace"]).optional(),
+	data: z.record(z.any()),
 });
 
 // -- Helpers --------------------------------------------------------
@@ -138,6 +180,7 @@ app.use("/api/*", cors({
 		return undefined;
 	},
 }));
+app.use("/api/v1/mailboxes/:mailboxId", requireMailbox);
 app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 
 // -- Config ---------------------------------------------------------
@@ -149,11 +192,109 @@ app.get("/api/v1/config", (c) => {
 	return c.json({ domains, emailAddresses });
 });
 
+app.get("/api/v1/setup/status", (c) => {
+	const access = getAccessContextFromRequest(c.req.raw);
+	const url = new URL(c.req.url);
+	const isLocalRequest =
+		url.hostname === "localhost" ||
+		url.hostname === "127.0.0.1" ||
+		url.hostname === "::1";
+	const accessRequired = !(import.meta.env.DEV || isLocalRequest);
+	const domains = (c.env.DOMAINS || "").split(",").map((d) => d.trim()).filter(Boolean);
+	const emailAddresses = Array.from((c.env.EMAIL_ADDRESSES ?? []) as readonly string[]);
+	const checks = [
+		{
+			id: "domains",
+			label: "Receiving domain",
+			status: domains.length > 0 ? "ok" : "error",
+			detail: domains.length > 0
+				? `Configured for ${domains.join(", ")}`
+				: "Set DOMAINS to the domain that receives email.",
+		},
+		{
+			id: "mailboxes",
+			label: "Mailbox source",
+			status: emailAddresses.length > 0 ? "ok" : "warning",
+			detail: emailAddresses.length > 0
+				? `${emailAddresses.length} mailbox address${emailAddresses.length === 1 ? "" : "es"} configured.`
+				: "No EMAIL_ADDRESSES set; mailbox creation is manual and catch-all based.",
+		},
+		{
+			id: "r2",
+			label: "Attachment storage",
+			status: c.env.BUCKET ? "ok" : "error",
+			detail: c.env.BUCKET
+				? "R2 bucket binding is available."
+				: "Bind an R2 bucket named BUCKET.",
+		},
+		{
+			id: "send_email",
+			label: "Outbound email",
+			status: c.env.EMAIL ? "ok" : "error",
+			detail: c.env.EMAIL
+				? "Email sending binding is available."
+				: "Enable Email Service and bind SEND_EMAIL.",
+		},
+		{
+			id: "workers_ai",
+			label: "Workers AI",
+			status: c.env.AI ? "ok" : "error",
+			detail: c.env.AI
+				? "AI binding is available for classification and drafts."
+				: "Bind Workers AI as AI.",
+		},
+		{
+			id: "access",
+			label: "Cloudflare Access",
+			status: !accessRequired
+				? "warning"
+				: c.env.POLICY_AUD && c.env.TEAM_DOMAIN
+					? "ok"
+					: "error",
+			detail: !accessRequired
+				? "Skipped for local development."
+				: c.env.POLICY_AUD && c.env.TEAM_DOMAIN
+					? "Access JWT validation secrets are present."
+					: "Set POLICY_AUD and TEAM_DOMAIN secrets before sharing this app.",
+		},
+		{
+			id: "routing",
+			label: "Email Routing",
+			status: "unknown",
+			detail: "Forward a catch-all Email Routing rule to this Worker, then send a test email.",
+		},
+	];
+	const hasError = checks.some((check) => check.status === "error");
+	const hasWarning = checks.some((check) => check.status === "warning");
+	return c.json({
+		status: hasError ? "action_required" : hasWarning ? "needs_attention" : "ready",
+		accessUserEmail: access.userEmail,
+		isLocalAccess: access.isLocalBypass,
+		checks,
+	});
+});
+
+app.get("/api/v1/access/identity", (c) => {
+	const access = getAccessContextFromRequest(c.req.raw);
+	return c.json({
+		email: access.userEmail,
+		isLocalAccess: access.isLocalBypass,
+	});
+});
+
 // -- Mailboxes ------------------------------------------------------
 
 app.get("/api/v1/mailboxes", async (c) => {
+	const access = getAccessContextFromRequest(c.req.raw);
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
-	return c.json(allMailboxes.map((m) => ({ ...m, name: m.id })));
+	const visibleMailboxes: Array<{ id: string; email: string; name: string }> = [];
+	for (const mailbox of allMailboxes) {
+		const settings = await getMailboxSettings(c.env, mailbox.id);
+		if (canAccessMailbox(settings, access)) {
+			visibleMailboxes.push({ ...mailbox, name: mailbox.id });
+		}
+	}
+	return c.json(visibleMailboxes);
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
@@ -170,6 +311,16 @@ app.post("/api/v1/mailboxes", async (c) => {
 		forwarding: { enabled: false, email: "" },
 		signature: { enabled: false, text: "" },
 		autoReply: { enabled: false, subject: "", message: "" },
+		security: {
+			allowedAccessEmails: [],
+			mcpScopes: {
+				read: true,
+				organize: true,
+				draft: true,
+				send: true,
+				delete: true,
+			},
+		},
 			classification: {
 				enabled: true,
 				autoDraftAfterClassify: false,
@@ -187,26 +338,115 @@ app.post("/api/v1/mailboxes", async (c) => {
 
 app.get("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const obj = await c.env.BUCKET.get(`mailboxes/${mailboxId}.json`);
-	if (!obj) return c.json({ error: "Not found" }, 404);
-	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings: await obj.json() });
+	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings: c.var.mailboxSettings });
 });
 
 app.put("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { settings } = (await c.req.json()) as { settings: Record<string, unknown> };
 	const key = `mailboxes/${mailboxId}.json`;
-	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
-	await c.env.BUCKET.put(key, JSON.stringify(settings));
-	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings });
+	const security = securitySettings(settings);
+	const nextSettings = {
+		...settings,
+		security,
+	};
+	await c.env.BUCKET.put(key, JSON.stringify(nextSettings));
+	return c.json({ id: mailboxId, name: mailboxId, email: mailboxId, settings: nextSettings });
 });
 
 app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const key = `mailboxes/${mailboxId}.json`;
 	if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Not found" }, 404);
-	await c.env.BUCKET.delete(key); // TODO: also delete DO data and R2 attachment blobs
+	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
+	const result = await (stub as any).purgeMailboxData();
+	if (result.attachments?.length > 0) {
+		await c.env.BUCKET.delete(
+			result.attachments.map(
+				(att: { emailId: string; id: string; filename: string }) =>
+					`attachments/${att.emailId}/${att.id}/${att.filename}`,
+			),
+		);
+	}
+	await c.env.BUCKET.delete(key);
 	return c.body(null, 204);
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/export", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const data = await (c.var.mailboxStub as any).exportMailboxData();
+	const body = JSON.stringify(
+		{
+			mailbox: {
+				id: mailboxId,
+				email: mailboxId,
+				settings: c.var.mailboxSettings,
+			},
+			...data,
+		},
+		null,
+		2,
+	);
+	const headers = new Headers({
+		"Content-Type": "application/json; charset=utf-8",
+		"Content-Disposition": `attachment; filename="${mailboxId.replace(/[^a-z0-9_.-]/gi, "_")}-export.json"`,
+	});
+	return new Response(body, { headers });
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/import", async (c: AppContext) => {
+	const mailboxId = c.req.param("mailboxId")!;
+	const { data, mode = "merge" } = ImportMailboxBody.parse(await c.req.json());
+	let purged:
+		| {
+			emailCount: number;
+			attachments: Array<{ emailId: string; id: string; filename: string }>;
+		}
+		| undefined;
+
+	if (mode === "replace") {
+		const purgedData = await (c.var.mailboxStub as any).purgeMailboxData();
+		purged = purgedData;
+		if (purgedData.attachments.length > 0) {
+			await c.env.BUCKET.delete(
+				purgedData.attachments.map(
+					(att) => `attachments/${att.emailId}/${att.id}/${att.filename}`,
+				),
+			);
+		}
+	}
+
+	const imported = await (c.var.mailboxStub as any).importMailboxData(data);
+	const mailbox = data.mailbox;
+	let settingsRestored = false;
+
+	if (mailbox && typeof mailbox === "object" && !Array.isArray(mailbox)) {
+		const importedSettings = (mailbox as Record<string, unknown>).settings;
+		if (
+			importedSettings &&
+			typeof importedSettings === "object" &&
+			!Array.isArray(importedSettings)
+		) {
+			const nextSettings = {
+				...(importedSettings as Record<string, unknown>),
+				security: securitySettings(c.var.mailboxSettings),
+			};
+			await c.env.BUCKET.put(
+				`mailboxes/${mailboxId}.json`,
+				JSON.stringify(nextSettings),
+			);
+			settingsRestored = true;
+		}
+	}
+
+	return c.json({
+		status: "imported",
+		mode,
+		settingsRestored,
+		purgedEmailCount: purged?.emailCount ?? 0,
+		purgedAttachmentCount: purged?.attachments.length ?? 0,
+		...imported,
+	});
 });
 
 // -- Emails ---------------------------------------------------------
@@ -283,18 +523,52 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
+	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id, attachments } = DraftBody.parse(await c.req.json());
 	const stub = c.var.mailboxStub;
-	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
 	const messageId = crypto.randomUUID();
 	const now = new Date().toISOString();
+	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
 	await stub.createEmail(Folders.DRAFT, {
 		id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
 		recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
 		date: now, body, in_reply_to: in_reply_to || null, email_references: null,
 		thread_id: thread_id || in_reply_to || messageId,
-	}, []);
-	return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
+	}, attachmentData);
+	if (draft_id) {
+		const oldAttachments = await stub.deleteEmail(draft_id);
+		if (Array.isArray(oldAttachments) && oldAttachments.length > 0) {
+			await c.env.BUCKET.delete(
+				oldAttachments.map(
+					(att: { id: string; filename: string }) =>
+						`attachments/${draft_id}/${att.id}/${att.filename}`,
+				),
+			);
+		}
+	}
+	return c.json({
+		id: messageId,
+		draft_id: messageId,
+		status: "draft",
+		subject: subject || "",
+		recipient: to || "",
+		date: now,
+	}, 201);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/emails/bulk", async (c: AppContext) => {
+	const body = BulkEmailActionBody.parse(await c.req.json());
+	const result = await (c.var.mailboxStub as any).bulkEmailAction(body);
+	if (result && "error" in result) return c.json(result, 400);
+
+	if (body.action === "delete" && result.attachments?.length > 0) {
+		const keys = result.attachments.map(
+			(att: { emailId: string; id: string; filename: string }) =>
+				`attachments/${att.emailId}/${att.id}/${att.filename}`,
+		);
+		await c.env.BUCKET.delete(keys);
+	}
+
+	return c.json(result);
 });
 
 app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
@@ -416,7 +690,9 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/classify", async (c: AppContex
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/label", async (c: AppContext) => {
 	const { labelId, reason } = ApplyLabelBody.parse(await c.req.json());
-	const result = await (c.var.mailboxStub as any).correctEmailLabel(c.req.param("id")!, labelId, reason);
+	const result = labelId
+		? await (c.var.mailboxStub as any).correctEmailLabel(c.req.param("id")!, labelId, reason)
+		: await (c.var.mailboxStub as any).clearEmailLabel(c.req.param("id")!, reason);
 	return "error" in result ? c.json(result, 400) : c.json(result);
 });
 

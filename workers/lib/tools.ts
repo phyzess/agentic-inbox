@@ -54,6 +54,10 @@ type TriageStub = {
 		labelId: string,
 		reason?: string,
 	) => Promise<Record<string, unknown>>;
+	clearEmailLabel: (
+		emailId: string,
+		reason?: string,
+	) => Promise<Record<string, unknown>>;
 	getClassification: (emailId: string) => Promise<Record<string, unknown>>;
 	suggestRuleForEmail: (
 		emailId: string,
@@ -148,6 +152,18 @@ export async function toolApplyLabel(
 	return (stub as unknown as TriageStub).correctEmailLabel(
 		params.emailId,
 		params.labelId,
+		params.reason,
+	);
+}
+
+export async function toolClearLabel(
+	env: Env,
+	mailboxId: string,
+	params: { emailId: string; reason?: string },
+) {
+	const stub = getMailboxStub(env, mailboxId);
+	return (stub as unknown as TriageStub).clearEmailLabel(
+		params.emailId,
 		params.reason,
 	);
 }

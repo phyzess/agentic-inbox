@@ -8,9 +8,18 @@ import { type KeyboardEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useUIStore } from "~/hooks/useUIStore";
 
+const SEARCH_SHORTCUTS = [
+	{ label: "Unread", query: "is:unread" },
+	{ label: "Attachments", query: "has:attachment" },
+	{ label: "Starred", query: "is:starred" },
+	{ label: "Action needed", query: "label:action_needed" },
+	{ label: "Waiting", query: "label:waiting" },
+];
+
 export default function Header() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+	const [isSearchHelpOpen, setIsSearchHelpOpen] = useState(false);
 	const { mailboxId } = useParams<{ mailboxId: string }>();
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -25,11 +34,14 @@ export default function Header() {
 		}
 	}, [urlQuery, location.pathname]);
 
-	const performSearch = () => {
-		if (mailboxId && searchQuery.trim()) {
-			const q = searchQuery.trim();
+	const performSearch = (queryOverride?: string) => {
+		const nextQuery = queryOverride ?? searchQuery;
+		if (mailboxId && nextQuery.trim()) {
+			const q = nextQuery.trim();
+			setSearchQuery(q);
 			navigate(`/mailbox/${mailboxId}/search?q=${encodeURIComponent(q)}`);
 			setIsSearchExpanded(false);
+			setIsSearchHelpOpen(false);
 		}
 	};
 
@@ -82,6 +94,10 @@ export default function Header() {
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 						onKeyDown={handleKeyDown}
+						onFocus={() => setIsSearchHelpOpen(true)}
+						onBlur={() => {
+							window.setTimeout(() => setIsSearchHelpOpen(false), 150);
+						}}
 					/>
 					{searchQuery && (
 						<button
@@ -93,13 +109,33 @@ export default function Header() {
 							<XIcon size={14} />
 						</button>
 					)}
+					{isSearchHelpOpen && (
+						<div className="absolute left-0 right-0 top-full z-30 mt-1 rounded-lg border border-kumo-line bg-kumo-elevated p-2 shadow-lg">
+							<div className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-kumo-subtle">
+								Quick filters
+							</div>
+							<div className="flex flex-wrap gap-1.5">
+								{SEARCH_SHORTCUTS.map((shortcut) => (
+									<button
+										key={shortcut.query}
+										type="button"
+										onMouseDown={(event) => event.preventDefault()}
+										onClick={() => performSearch(shortcut.query)}
+										className="rounded-md border border-kumo-line bg-kumo-base px-2 py-1 text-xs text-kumo-strong transition-colors hover:bg-kumo-tint"
+									>
+										{shortcut.label}
+									</button>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
 				<Tooltip content="Search" side="bottom" asChild>
 					<Button
 						variant="ghost"
 						shape="square"
 						icon={<MagnifyingGlassIcon size={20} />}
-						onClick={performSearch}
+						onClick={() => performSearch()}
 						aria-label="Search"
 					/>
 				</Tooltip>

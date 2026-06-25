@@ -133,11 +133,40 @@ interface TriageEventParams {
 }
 
 type ClassificationStatus = "unclassified" | "processing" | "classified" | "error";
+type BulkEmailAction =
+	| "mark_read"
+	| "mark_unread"
+	| "star"
+	| "unstar"
+	| "archive"
+	| "spam"
+	| "trash"
+	| "restore"
+	| "move"
+	| "delete";
 type ClassifyEmailOptions = {
 	force?: boolean;
 	lowConfidenceThreshold?: number;
 	autoFileAfterClassify?: boolean;
 	autoFileLabels?: string[];
+};
+type BulkEmailFilter = {
+	folder?: string;
+	label?: string;
+};
+type BulkEmailActionParams = {
+	action: BulkEmailAction;
+	emailIds?: string[];
+	filter?: BulkEmailFilter;
+	includeThreads?: boolean;
+	folderId?: string;
+	limit?: number;
+};
+type BulkTargetRow = {
+	id: string;
+	folder_id: string;
+	read: number;
+	starred: number;
 };
 
 export class MailboxDO extends DurableObject<Env> {
@@ -455,6 +484,22 @@ export class MailboxDO extends DurableObject<Env> {
 			now,
 		);
 		this.#recordClassificationStatus(emailId, "classified", null);
+		return this.getClassification(emailId);
+	}
+
+	async clearEmailLabel(emailId: string, reason?: string) {
+		const emailExists = [
+			...this.ctx.storage.sql.exec(`SELECT 1 FROM emails WHERE id = ?1`, emailId),
+		].length > 0;
+		if (!emailExists) return { error: "Email not found" };
+
+		this.ctx.storage.transactionSync(() => {
+			this.ctx.storage.sql.exec(`DELETE FROM email_labels WHERE email_id = ?1`, emailId);
+			this.#recordClassificationStatus(emailId, "unclassified", null);
+		});
+		console.log(
+			`Classification cleared for ${emailId}${reason ? `: ${reason}` : ""}`,
+		);
 		return this.getClassification(emailId);
 	}
 
@@ -1340,6 +1385,248 @@ export class MailboxDO extends DurableObject<Env> {
 		return emailAttachments;
 	}
 
+	async purgeMailboxData() {
+		const emailCountRow = [
+			...this.ctx.storage.sql.exec(`SELECT COUNT(*) as total FROM emails`),
+		][0] as { total: number } | undefined;
+		const attachments = [
+			...this.ctx.storage.sql.exec(
+				`SELECT email_id, id, filename FROM attachments`,
+			),
+		] as { email_id: string; id: string; filename: string }[];
+
+		this.ctx.storage.transactionSync(() => {
+			this.ctx.storage.sql.exec(`DELETE FROM triage_events`);
+			this.ctx.storage.sql.exec(`DELETE FROM classification_feedback`);
+			this.ctx.storage.sql.exec(`DELETE FROM email_labels`);
+			this.ctx.storage.sql.exec(`DELETE FROM email_classifications`);
+			this.ctx.storage.sql.exec(`DELETE FROM classification_rules`);
+			this.ctx.storage.sql.exec(`DELETE FROM attachments`);
+			this.ctx.storage.sql.exec(`DELETE FROM emails`);
+			this.ctx.storage.sql.exec(`DELETE FROM labels WHERE is_system = 0`);
+			this.ctx.storage.sql.exec(`DELETE FROM folders WHERE is_deletable = 1`);
+		});
+
+		return {
+			emailCount: Number(emailCountRow?.total ?? 0),
+			attachments: attachments.map((attachment) => ({
+				emailId: attachment.email_id,
+				id: attachment.id,
+				filename: attachment.filename,
+			})),
+		};
+	}
+
+	async exportMailboxData() {
+		const folders = [...this.ctx.storage.sql.exec(`SELECT * FROM folders ORDER BY name ASC`)];
+		const emails = [...this.ctx.storage.sql.exec(`SELECT * FROM emails ORDER BY date DESC`)];
+		const attachments = [...this.ctx.storage.sql.exec(`SELECT * FROM attachments ORDER BY filename ASC`)];
+		const labels = [...this.ctx.storage.sql.exec(`SELECT * FROM labels ORDER BY is_system DESC, name ASC`)];
+		const emailLabels = [...this.ctx.storage.sql.exec(`SELECT * FROM email_labels ORDER BY updated_at DESC`)];
+		const classifications = [...this.ctx.storage.sql.exec(`SELECT * FROM email_classifications ORDER BY updated_at DESC`)];
+		const classificationRules = [...this.ctx.storage.sql.exec(`SELECT * FROM classification_rules ORDER BY updated_at DESC`)];
+		const triageEvents = [...this.ctx.storage.sql.exec(`SELECT * FROM triage_events ORDER BY created_at DESC`)];
+
+		return {
+			exportedAt: new Date().toISOString(),
+			folders,
+			emails,
+			attachments,
+			labels,
+			emailLabels,
+			classifications,
+			classificationRules,
+			triageEvents,
+		};
+	}
+
+	async importMailboxData(data: Record<string, unknown>) {
+		const folders = Array.isArray(data.folders) ? data.folders : [];
+		const emails = Array.isArray(data.emails) ? data.emails : [];
+		const labels = Array.isArray(data.labels) ? data.labels : [];
+		const emailLabels = Array.isArray(data.emailLabels) ? data.emailLabels : [];
+		const classifications = Array.isArray(data.classifications) ? data.classifications : [];
+		const classificationRules = Array.isArray(data.classificationRules)
+			? data.classificationRules
+			: [];
+		const triageEvents = Array.isArray(data.triageEvents) ? data.triageEvents : [];
+
+		let importedFolders = 0;
+		let importedEmails = 0;
+		let importedLabels = 0;
+		let importedRules = 0;
+		let importedTriageEvents = 0;
+
+		const textValue = (value: unknown, fallback = "") =>
+			typeof value === "string" ? value : fallback;
+		const nullableText = (value: unknown) =>
+			typeof value === "string" && value.length > 0 ? value : null;
+		const numberValue = (value: unknown, fallback = 0) =>
+			typeof value === "number" && Number.isFinite(value) ? value : fallback;
+		const booleanInt = (value: unknown) => (value === true || value === 1 ? 1 : 0);
+
+		this.ctx.storage.transactionSync(() => {
+			for (const raw of folders as Record<string, unknown>[]) {
+				const id = textValue(raw.id);
+				const name = textValue(raw.name, id);
+				if (!id || !name) continue;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO folders (id, name, is_deletable)
+					 VALUES (?1, ?2, ?3)`,
+					id,
+					name,
+					numberValue(raw.is_deletable, 1),
+				);
+				importedFolders++;
+			}
+
+			for (const raw of labels as Record<string, unknown>[]) {
+				const id = textValue(raw.id);
+				const name = textValue(raw.name, id);
+				if (!id || !name) continue;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO labels
+						(id, name, description, color, is_system)
+					 VALUES (?1, ?2, ?3, ?4, ?5)`,
+					id,
+					name,
+					nullableText(raw.description),
+					nullableText(raw.color),
+					numberValue(raw.is_system, 1),
+				);
+				importedLabels++;
+			}
+
+			for (const raw of emails as Record<string, unknown>[]) {
+				const id = textValue(raw.id);
+				if (!id) continue;
+				const folderId = textValue(raw.folder_id, Folders.INBOX);
+				const folderExists = [
+					...this.ctx.storage.sql.exec(
+						`SELECT 1 FROM folders WHERE id = ?1 LIMIT 1`,
+						folderId,
+					),
+				].length > 0;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO emails
+						(id, folder_id, subject, sender, recipient, cc, bcc, date,
+						 read, starred, body, in_reply_to, email_references,
+						 thread_id, message_id, raw_headers)
+					 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+						 ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`,
+					id,
+					folderExists ? folderId : Folders.INBOX,
+					textValue(raw.subject),
+					textValue(raw.sender),
+					textValue(raw.recipient),
+					nullableText(raw.cc),
+					nullableText(raw.bcc),
+					textValue(raw.date, new Date().toISOString()),
+					booleanInt(raw.read),
+					booleanInt(raw.starred),
+					textValue(raw.body),
+					nullableText(raw.in_reply_to),
+					nullableText(raw.email_references),
+					nullableText(raw.thread_id),
+					nullableText(raw.message_id),
+					nullableText(raw.raw_headers),
+				);
+				importedEmails++;
+			}
+
+			for (const raw of emailLabels as Record<string, unknown>[]) {
+				const emailId = textValue(raw.email_id);
+				const labelId = textValue(raw.label_id);
+				if (!emailId || !labelId) continue;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO email_labels
+						(email_id, label_id, source, confidence, reason, created_at, updated_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+					 WHERE EXISTS (SELECT 1 FROM emails WHERE id = ?1)
+					   AND EXISTS (SELECT 1 FROM labels WHERE id = ?2)`,
+					emailId,
+					labelId,
+					textValue(raw.source, "manual"),
+					typeof raw.confidence === "number" ? raw.confidence : null,
+					nullableText(raw.reason),
+					textValue(raw.created_at, new Date().toISOString()),
+					textValue(raw.updated_at, new Date().toISOString()),
+				);
+			}
+
+			for (const raw of classifications as Record<string, unknown>[]) {
+				const emailId = textValue(raw.email_id);
+				if (!emailId) continue;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO email_classifications
+						(email_id, status, error, classified_at, updated_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5
+					 WHERE EXISTS (SELECT 1 FROM emails WHERE id = ?1)`,
+					emailId,
+					textValue(raw.status, "unclassified"),
+					nullableText(raw.error),
+					nullableText(raw.classified_at),
+					textValue(raw.updated_at, new Date().toISOString()),
+				);
+			}
+
+			for (const raw of classificationRules as Record<string, unknown>[]) {
+				const id = textValue(raw.id);
+				const labelId = textValue(raw.label_id);
+				if (!id || !labelId) continue;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO classification_rules
+						(id, label_id, field, operator, value, status, created_at, updated_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+					 WHERE EXISTS (SELECT 1 FROM labels WHERE id = ?2)`,
+					id,
+					labelId,
+					textValue(raw.field),
+					textValue(raw.operator),
+					textValue(raw.value),
+					textValue(raw.status, "suggested"),
+					textValue(raw.created_at, new Date().toISOString()),
+					textValue(raw.updated_at, new Date().toISOString()),
+				);
+				importedRules++;
+			}
+
+			for (const raw of triageEvents as Record<string, unknown>[]) {
+				const id = textValue(raw.id);
+				const emailId = textValue(raw.email_id);
+				if (!id || !emailId) continue;
+				this.ctx.storage.sql.exec(
+					`INSERT OR REPLACE INTO triage_events
+						(id, email_id, action, source, label_id, from_folder_id,
+						 to_folder_id, created_at, undone_at)
+					 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
+					 WHERE EXISTS (SELECT 1 FROM emails WHERE id = ?2)`,
+					id,
+					emailId,
+					textValue(raw.action, "imported"),
+					textValue(raw.source, "import"),
+					nullableText(raw.label_id),
+					nullableText(raw.from_folder_id),
+					nullableText(raw.to_folder_id),
+					textValue(raw.created_at, new Date().toISOString()),
+					nullableText(raw.undone_at),
+				);
+				importedTriageEvents++;
+			}
+		});
+
+		return {
+			importedFolders,
+			importedEmails,
+			importedLabels,
+			importedRules,
+			importedTriageEvents,
+			skippedAttachmentMetadata: Array.isArray(data.attachments)
+				? data.attachments.length
+				: 0,
+		};
+	}
+
 	async getAttachment(id: string) {
 		return (
 			this.db
@@ -1431,6 +1718,255 @@ export class MailboxDO extends DurableObject<Env> {
 			.run();
 
 		return true;
+	}
+
+	#bulkTargetRows(params: BulkEmailActionParams): BulkTargetRow[] {
+		const maxTargets = this.#safeLimit(params.limit, 100, 1000);
+		if (params.emailIds && params.emailIds.length > 0) {
+			const ids = [...new Set(params.emailIds.filter(Boolean))].slice(
+				0,
+				maxTargets,
+			);
+			if (ids.length === 0) return [];
+
+			const placeholders = ids.map((_, i) => `?${i + 1}`).join(",");
+			if (params.includeThreads) {
+				const threadRows = [
+					...this.ctx.storage.sql.exec(
+						`SELECT DISTINCT COALESCE(thread_id, id) as thread_key
+						 FROM emails
+						 WHERE id IN (${placeholders})`,
+						...ids,
+					),
+				] as { thread_key: string }[];
+				const threadKeys = threadRows
+					.map((row) => row.thread_key)
+					.filter(Boolean)
+					.slice(0, maxTargets);
+				if (threadKeys.length === 0) return [];
+
+				const conditions = [
+					`COALESCE(thread_id, id) IN (${threadKeys.map((_, i) => `?${i + 1}`).join(",")})`,
+				];
+				const queryParams: (string | number)[] = [...threadKeys];
+				if (params.filter?.folder) {
+					queryParams.push(params.filter.folder);
+					conditions.push(
+						`folder_id = (SELECT id FROM folders WHERE name = ?${queryParams.length} OR id = ?${queryParams.length} LIMIT 1)`,
+					);
+				}
+				if (params.filter?.label) {
+					queryParams.push(params.filter.label);
+					conditions.push(
+						`id IN (SELECT email_id FROM email_labels WHERE label_id = ?${queryParams.length})`,
+					);
+				}
+				queryParams.push(maxTargets);
+				return [
+					...this.ctx.storage.sql.exec(
+						`SELECT id, folder_id, read, starred
+						 FROM emails
+						 WHERE ${conditions.join(" AND ")}
+						 ORDER BY date DESC
+						 LIMIT ?${queryParams.length}`,
+						...queryParams,
+					),
+				] as BulkTargetRow[];
+			}
+
+			return [
+				...this.ctx.storage.sql.exec(
+					`SELECT id, folder_id, read, starred
+					 FROM emails
+					 WHERE id IN (${placeholders})
+					 ORDER BY date DESC`,
+					...ids,
+				),
+			] as BulkTargetRow[];
+		}
+
+		const filter = params.filter;
+		if (!filter?.folder && !filter?.label) return [];
+
+		const conditions: string[] = [];
+		const queryParams: (string | number)[] = [];
+		if (filter.folder) {
+			queryParams.push(filter.folder);
+			conditions.push(
+				`folder_id = (SELECT id FROM folders WHERE name = ?${queryParams.length} OR id = ?${queryParams.length} LIMIT 1)`,
+			);
+		}
+		if (filter.label) {
+			queryParams.push(filter.label);
+			conditions.push(
+				`id IN (SELECT email_id FROM email_labels WHERE label_id = ?${queryParams.length})`,
+			);
+		}
+		if (params.action === "mark_read") {
+			conditions.push("read = 0");
+		}
+		if (params.action === "mark_unread") {
+			conditions.push("read = 1");
+		}
+		if (params.action === "star") {
+			conditions.push("starred = 0");
+		}
+		if (params.action === "unstar") {
+			conditions.push("starred = 1");
+		}
+
+		const where = `WHERE ${conditions.join(" AND ")}`;
+		queryParams.push(maxTargets);
+		return [
+			...this.ctx.storage.sql.exec(
+				`SELECT id, folder_id, read, starred
+				 FROM emails
+				 ${where}
+				 ORDER BY date DESC
+				 LIMIT ?${queryParams.length}`,
+				...queryParams,
+			),
+		] as BulkTargetRow[];
+	}
+
+	async bulkEmailAction(params: BulkEmailActionParams) {
+		const rows = this.#bulkTargetRows(params);
+		const emailIds = rows.map((row) => row.id);
+		if (emailIds.length === 0) {
+			return {
+				action: params.action,
+				count: 0,
+				emailIds: [],
+				attachments: [],
+			};
+		}
+
+		if (params.action === "delete") {
+			const placeholders = emailIds.map((_, i) => `?${i + 1}`).join(",");
+			const attachments = [
+				...this.ctx.storage.sql.exec(
+					`SELECT email_id, id, filename
+					 FROM attachments
+					 WHERE email_id IN (${placeholders})`,
+					...emailIds,
+				),
+			] as { email_id: string; id: string; filename: string }[];
+
+			this.ctx.storage.transactionSync(() => {
+				for (const emailId of emailIds) {
+					this.ctx.storage.sql.exec(`DELETE FROM emails WHERE id = ?1`, emailId);
+				}
+			});
+
+			return {
+				action: params.action,
+				count: emailIds.length,
+				emailIds,
+				attachments: attachments.map((attachment) => ({
+					emailId: attachment.email_id,
+					id: attachment.id,
+					filename: attachment.filename,
+				})),
+			};
+		}
+
+		if (params.action === "mark_read" || params.action === "mark_unread") {
+			const readValue = params.action === "mark_read" ? 1 : 0;
+			const changedRows = rows.filter((row) => row.read !== readValue);
+			this.ctx.storage.transactionSync(() => {
+				for (const row of changedRows) {
+					this.ctx.storage.sql.exec(
+						`UPDATE emails SET read = ?2 WHERE id = ?1`,
+						row.id,
+						readValue,
+					);
+					this.#recordTriageEvent({
+						emailId: row.id,
+						action: params.action,
+						source: "bulk_action",
+					});
+				}
+			});
+
+			return {
+				action: params.action,
+				count: changedRows.length,
+				emailIds: changedRows.map((row) => row.id),
+				attachments: [],
+			};
+		}
+
+		if (params.action === "star" || params.action === "unstar") {
+			const starredValue = params.action === "star" ? 1 : 0;
+			const changedRows = rows.filter((row) => row.starred !== starredValue);
+			this.ctx.storage.transactionSync(() => {
+				for (const row of changedRows) {
+					this.ctx.storage.sql.exec(
+						`UPDATE emails SET starred = ?2 WHERE id = ?1`,
+						row.id,
+						starredValue,
+					);
+					this.#recordTriageEvent({
+						emailId: row.id,
+						action: params.action,
+						source: "bulk_action",
+					});
+				}
+			});
+
+			return {
+				action: params.action,
+				count: changedRows.length,
+				emailIds: changedRows.map((row) => row.id),
+				attachments: [],
+			};
+		}
+
+		const targetFolderId =
+			params.action === "archive"
+				? Folders.ARCHIVE
+				: params.action === "spam"
+					? Folders.SPAM
+					: params.action === "trash"
+						? Folders.TRASH
+						: params.action === "restore"
+							? Folders.INBOX
+							: params.folderId;
+		if (!targetFolderId) return { error: "Target folder is required" };
+
+		const folderExists = [
+			...this.ctx.storage.sql.exec(
+				`SELECT 1 FROM folders WHERE id = ?1 LIMIT 1`,
+				targetFolderId,
+			),
+		].length > 0;
+		if (!folderExists) return { error: "Folder not found" };
+
+		const changedRows = rows.filter((row) => row.folder_id !== targetFolderId);
+		this.ctx.storage.transactionSync(() => {
+			for (const row of changedRows) {
+				this.ctx.storage.sql.exec(
+					`UPDATE emails SET folder_id = ?2 WHERE id = ?1`,
+					row.id,
+					targetFolderId,
+				);
+				this.#recordTriageEvent({
+					emailId: row.id,
+					action: "move",
+					source: `bulk_${params.action}`,
+					fromFolderId: row.folder_id,
+					toFolderId: targetFolderId,
+				});
+			}
+		});
+
+		return {
+			action: params.action,
+			count: changedRows.length,
+			emailIds: changedRows.map((row) => row.id),
+			folderId: targetFolderId,
+			attachments: [],
+		};
 	}
 
 	// ── Search (raw SQL — dynamic condition builder) ───────────────

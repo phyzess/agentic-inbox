@@ -16,7 +16,12 @@ import {
 } from "~/lib/utils";
 import { useDeleteEmail, useForwardEmail, useReplyToEmail, useSaveDraft, useSendEmail } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
+import api from "~/services/api";
 import { useUIStore } from "~/hooks/useUIStore";
+import type { ComposeAttachment } from "~/types";
+
+const MAX_ATTACHMENT_COUNT = 10;
+const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 function appendUniqueAddress(
 	addresses: string[],
@@ -57,6 +62,64 @@ function getPrefixedSubject(subject: string, prefix: "Re" | "Fwd") {
 	return subject.startsWith(expectedPrefix)
 		? subject
 		: `${expectedPrefix}${subject}`;
+}
+
+function attachmentPayload(attachments: ComposeAttachment[]) {
+	return attachments.map(({ content, filename, type, disposition, contentId }) => ({
+		content,
+		filename,
+		type,
+		disposition,
+		...(contentId ? { contentId } : {}),
+	}));
+}
+
+function serializeDraftSnapshot(fields: {
+	to: string;
+	cc: string;
+	bcc: string;
+	subject: string;
+	body: string;
+	attachments: ComposeAttachment[];
+}) {
+	return JSON.stringify({
+		to: fields.to,
+		cc: fields.cc,
+		bcc: fields.bcc,
+		subject: fields.subject,
+		body: fields.body,
+		attachments: fields.attachments.map((attachment) => ({
+			id: attachment.id,
+			filename: attachment.filename,
+			size: attachment.size,
+			type: attachment.type,
+			disposition: attachment.disposition,
+			contentId: attachment.contentId,
+		})),
+	});
+}
+
+function blobToBase64Content(blob: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = typeof reader.result === "string" ? reader.result : "";
+			resolve(result.includes(",") ? result.split(",")[1] || "" : result);
+		};
+		reader.onerror = () => reject(reader.error || new Error("Failed to read attachment."));
+		reader.readAsDataURL(blob);
+	});
+}
+
+async function fileToAttachment(file: File): Promise<ComposeAttachment> {
+	return {
+		id: crypto.randomUUID(),
+		filename: file.name || "attachment",
+		type: file.type || "application/octet-stream",
+		size: file.size,
+		content: await blobToBase64Content(file),
+		disposition: "attachment",
+	};
 }
 
 function buildForwardBody(
@@ -181,7 +244,12 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const [error, setError] = useState<string | null>(null);
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
+	const [isDiscarding, setIsDiscarding] = useState(false);
+	const [isAddingAttachments, setIsAddingAttachments] = useState(false);
+	const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+	const [currentDraftId, setCurrentDraftId] = useState<string | undefined>();
 	const lastInitializedOptionsRef = useRef<typeof composeOptions | null>(null);
+	const savedDraftSnapshotRef = useRef("");
 	const isDraftEdit = !!composeOptions.draftEmail;
 
 	const formTitle = useMemo(() => {
@@ -207,21 +275,123 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		setShowCcBcc(initialFields.showCcBcc);
 		setSubject(initialFields.subject);
 		setBody(initialFields.body);
+		setCurrentDraftId(composeOptions.draftEmail?.id);
+		setAttachments([]);
+		savedDraftSnapshotRef.current = serializeDraftSnapshot({
+			...initialFields,
+			attachments: [],
+		});
 	}, [composeOptions, currentMailbox?.email, sigBlock]);
 
-	const handleSaveDraft = async () => {
-		if (!mailboxId || isSending) return; setIsSavingDraft(true); setError(null);
+	useEffect(() => {
+		const draft = composeOptions.draftEmail;
+		if (!mailboxId || !draft?.id || !draft.attachments?.length) return;
+
+		let cancelled = false;
+		setIsAddingAttachments(true);
+		Promise.all(
+			draft.attachments.map(async (attachment) => {
+				const blob = await api.getAttachment(mailboxId, draft.id, attachment.id);
+				return {
+					id: `draft-${attachment.id}`,
+					filename: attachment.filename,
+					type: attachment.mimetype || blob.type || "application/octet-stream",
+					size: attachment.size || blob.size,
+					content: await blobToBase64Content(blob),
+					disposition: (attachment.disposition === "inline" ? "inline" : "attachment") as "attachment" | "inline",
+					...(attachment.content_id ? { contentId: attachment.content_id } : {}),
+				};
+			}),
+		)
+			.then((loaded) => {
+				if (!cancelled) setAttachments(loaded);
+			})
+			.catch((err: unknown) => {
+				if (cancelled) return;
+				const message = err instanceof Error ? err.message : "Failed to load draft attachments.";
+				setError(message);
+				toastManager.add({ title: message, variant: "error" });
+			})
+			.finally(() => {
+				if (!cancelled) setIsAddingAttachments(false);
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [composeOptions.draftEmail, mailboxId, toastManager]);
+
+	const handleAddAttachments = async (files: FileList | File[] | null) => {
+		const selected = Array.from(files || []);
+		if (selected.length === 0 || isSending || isSavingDraft || isDiscarding) return;
+
+		const nextCount = attachments.length + selected.length;
+		if (nextCount > MAX_ATTACHMENT_COUNT) {
+			const message = `Attach up to ${MAX_ATTACHMENT_COUNT} files.`;
+			setError(message);
+			toastManager.add({ title: message, variant: "error" });
+			return;
+		}
+
+		const currentSize = attachments.reduce((sum, attachment) => sum + attachment.size, 0);
+		const nextSize = selected.reduce((sum, file) => sum + file.size, currentSize);
+		if (nextSize > MAX_TOTAL_ATTACHMENT_BYTES) {
+			const message = "Attachments must be 20 MB or less total.";
+			setError(message);
+			toastManager.add({ title: message, variant: "error" });
+			return;
+		}
+
+		setIsAddingAttachments(true);
+		setError(null);
 		try {
-			await saveDraftMutation.mutateAsync({ mailboxId, draft: {
-				to,
-				cc: cc || undefined,
-				bcc: bcc || undefined,
-				subject,
-				body,
-				in_reply_to: composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to || undefined,
-				thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
-				draft_id: composeOptions.draftEmail?.id || undefined,
-			} });
+			const nextAttachments = await Promise.all(selected.map(fileToAttachment));
+			setAttachments((current) => [...current, ...nextAttachments]);
+		} catch (err: unknown) {
+			const message = (err instanceof Error ? err.message : null) || "Failed to attach files.";
+			setError(message);
+			toastManager.add({ title: message, variant: "error" });
+		} finally {
+			setIsAddingAttachments(false);
+		}
+	};
+
+	const removeAttachment = (id: string) => {
+		setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+	};
+
+	const currentDraftSnapshot = () =>
+		serializeDraftSnapshot({ to, cc, bcc, subject, body, attachments });
+
+	const buildDraftPayload = () => ({
+		to,
+		cc: cc || undefined,
+		bcc: bcc || undefined,
+		subject,
+		body,
+		in_reply_to: composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to || undefined,
+		thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
+		draft_id: currentDraftId,
+		attachments: attachments.length > 0 ? attachmentPayload(attachments) : undefined,
+	});
+
+	const hasDraftContent = () =>
+		Boolean(
+			currentDraftId ||
+			to.trim() ||
+			cc.trim() ||
+			bcc.trim() ||
+			subject.trim() ||
+			htmlToPlainText(body).trim() ||
+			attachments.length > 0,
+		);
+
+	const handleSaveDraft = async () => {
+		if (!mailboxId || isSending || isAddingAttachments) return; setIsSavingDraft(true); setError(null);
+		try {
+			const savedDraft = await saveDraftMutation.mutateAsync({ mailboxId, draft: buildDraftPayload() });
+			setCurrentDraftId(savedDraft.draft_id || savedDraft.id);
+			savedDraftSnapshotRef.current = currentDraftSnapshot();
 			toastManager.add({ title: "Draft saved!" });
 		}
 		catch (err: unknown) {
@@ -232,8 +402,69 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		finally { setIsSavingDraft(false); }
 	};
 
+	const handleClose = async (onClose: () => void) => {
+		if (isSending || isSavingDraft || isDiscarding || isAddingAttachments) return;
+		setError(null);
+
+		if (currentDraftSnapshot() === savedDraftSnapshotRef.current || !hasDraftContent()) {
+			onClose();
+			return;
+		}
+
+		if (!mailboxId) {
+			setError("No mailbox selected.");
+			return;
+		}
+
+		setIsSavingDraft(true);
+		try {
+			const savedDraft = await saveDraftMutation.mutateAsync({ mailboxId, draft: buildDraftPayload() });
+			setCurrentDraftId(savedDraft.draft_id || savedDraft.id);
+			savedDraftSnapshotRef.current = currentDraftSnapshot();
+			toastManager.add({ title: "Draft saved" });
+			onClose();
+		} catch (err: unknown) {
+			const message = (err instanceof Error ? err.message : null) || "Failed to save draft.";
+			setError(message);
+			toastManager.add({ title: message, variant: "error" });
+		} finally {
+			setIsSavingDraft(false);
+		}
+	};
+
+	const handleDiscard = async (onClose: () => void) => {
+		if (isSending || isSavingDraft || isDiscarding || isAddingAttachments) return;
+		setError(null);
+
+		if (!currentDraftId) {
+			onClose();
+			return;
+		}
+
+		if (!mailboxId) {
+			setError("No mailbox selected.");
+			return;
+		}
+
+		if (!window.confirm("Discard this draft?")) return;
+
+		setIsDiscarding(true);
+		try {
+			await deleteEmailMutation.mutateAsync({ mailboxId, id: currentDraftId });
+			setCurrentDraftId(undefined);
+			toastManager.add({ title: "Draft discarded" });
+			onClose();
+		} catch (err: unknown) {
+			const message = (err instanceof Error ? err.message : null) || "Failed to discard draft.";
+			setError(message);
+			toastManager.add({ title: message, variant: "error" });
+		} finally {
+			setIsDiscarding(false);
+		}
+	};
+
 	const handleSend = async (e: FormEvent, onClose: () => void) => {
-		e.preventDefault(); if (isSending) return; setError(null);
+		e.preventDefault(); if (isSending || isAddingAttachments) return; setError(null);
 		if (!currentMailbox || !mailboxId) { setError("No mailbox selected."); return; }
 		const toRecipients = splitEmailList(to);
 		if (toRecipients.length === 0) { setError("Add at least one recipient."); return; }
@@ -248,8 +479,9 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			subject,
 			html: body,
 			text: htmlToPlainText(body),
+			attachments: attachments.length > 0 ? attachmentPayload(attachments) : undefined,
 		};
-		const draftId = composeOptions.draftEmail?.id; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
+		const draftId = currentDraftId; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
 		setIsSending(true); toastManager.add({ title: "Sending email..." });
 		try {
 			if ((mode === "reply" || mode === "reply-all") && originalId) await replyMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
@@ -262,5 +494,5 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		finally { setIsSending(false); }
 	};
 
-	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, error, setError, isSavingDraft, isSending, formTitle, handleSaveDraft, handleSend, closeCompose, closePanel };
+	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, attachments, isAddingAttachments, handleAddAttachments, removeAttachment, error, setError, isSavingDraft, isSending, isDiscarding, formTitle, handleClose, handleDiscard, handleSaveDraft, handleSend, closeCompose, closePanel };
 }

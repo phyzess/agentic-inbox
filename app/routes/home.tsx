@@ -12,7 +12,15 @@ import {
 	Text,
 	useKumoToastManager,
 } from "@cloudflare/kumo";
-import { EnvelopeIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+	CheckCircleIcon,
+	EnvelopeIcon,
+	InfoIcon,
+	PlusIcon,
+	TrashIcon,
+	WarningCircleIcon,
+	XCircleIcon,
+} from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
@@ -23,9 +31,69 @@ import {
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { queryKeys } from "~/queries/keys";
+import type { SetupCheck, SetupStatus } from "~/types";
 
 export function meta() {
 	return [{ title: "Agentic Inbox" }];
+}
+
+function SetupCheckIcon({ status }: { status: SetupCheck["status"] }) {
+	if (status === "ok") {
+		return <CheckCircleIcon size={16} weight="fill" className="text-kumo-success" />;
+	}
+	if (status === "error") {
+		return <XCircleIcon size={16} weight="fill" className="text-kumo-error" />;
+	}
+	if (status === "warning") {
+		return <WarningCircleIcon size={16} weight="fill" className="text-kumo-warning" />;
+	}
+	return <InfoIcon size={16} weight="fill" className="text-kumo-subtle" />;
+}
+
+function SetupChecklist({ status }: { status?: SetupStatus }) {
+	if (!status) return null;
+
+	const title =
+		status.status === "ready"
+			? "Setup ready"
+			: status.status === "needs_attention"
+				? "Setup needs attention"
+				: "Setup action required";
+
+	return (
+		<div className="mb-6 rounded-xl border border-kumo-line bg-kumo-base p-4">
+			<div className="mb-3 flex items-center justify-between gap-3">
+				<div>
+					<h2 className="text-sm font-semibold text-kumo-default">
+						{title}
+					</h2>
+					<p className="mt-0.5 text-xs text-kumo-subtle">
+						Deployment checks for receiving, sending, AI, storage, and access.
+					</p>
+				</div>
+			</div>
+			<div className="grid gap-2 sm:grid-cols-2">
+				{status.checks.map((check) => (
+					<div
+						key={check.id}
+						className="flex min-w-0 gap-2 rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2"
+					>
+						<span className="mt-0.5 shrink-0">
+							<SetupCheckIcon status={check.status} />
+						</span>
+						<div className="min-w-0">
+							<div className="truncate text-sm font-medium text-kumo-default">
+								{check.label}
+							</div>
+							<div className="text-xs leading-snug text-kumo-subtle">
+								{check.detail}
+							</div>
+						</div>
+					</div>
+				))}
+			</div>
+		</div>
+	);
 }
 
 export default function HomeRoute() {
@@ -38,6 +106,12 @@ export default function HomeRoute() {
 		queryKey: queryKeys.config,
 		queryFn: () => api.getConfig(),
 		staleTime: Infinity, // config rarely changes
+	});
+
+	const { data: setupStatus } = useQuery({
+		queryKey: queryKeys.setup,
+		queryFn: () => api.getSetupStatus(),
+		staleTime: 30_000,
 	});
 
 	const domains = configData?.domains ?? [];
@@ -161,6 +235,8 @@ export default function HomeRoute() {
 						</p>
 					)}
 				</div>
+
+				<SetupChecklist status={setupStatus} />
 
 				{isLoading ? (
 					<div className="flex justify-center py-20">
