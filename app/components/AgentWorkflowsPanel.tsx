@@ -26,7 +26,7 @@ import { useUIStore } from "~/hooks/useUIStore";
 
 function EmptyWorkState({ text }: { text: string }) {
 	return (
-		<div className="rounded-lg border border-dashed border-kumo-line px-3 py-4 text-center text-xs text-kumo-subtle">
+		<div className="sketch-note px-3 py-4 text-center text-xs text-kumo-subtle">
 			{text}
 		</div>
 	);
@@ -59,11 +59,11 @@ export default function AgentWorkflowsPanel() {
 
 	return (
 		<div className="flex h-full flex-col">
-			<div className="border-b border-kumo-line px-4 py-3">
+			<div className="border-b border-kumo-line px-4 py-3 bg-kumo-base/80">
 				<div className="flex items-center gap-2">
 					<RobotIcon size={16} weight="duotone" className="text-kumo-brand" />
 					<div>
-						<div className="text-sm font-semibold text-kumo-default">
+						<div className="sketch-title text-base text-kumo-default">
 							Agent work
 						</div>
 						<div className="text-xs text-kumo-subtle">
@@ -76,7 +76,7 @@ export default function AgentWorkflowsPanel() {
 			<div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
 				<section className="space-y-2">
 					<div className="flex items-center justify-between">
-						<h3 className="text-xs font-semibold uppercase tracking-wide text-kumo-subtle">
+						<h3 className="swiss-label">
 							Drafts to review
 						</h3>
 						<Button
@@ -101,7 +101,7 @@ export default function AgentWorkflowsPanel() {
 									key={draft.id}
 									type="button"
 									onClick={() => openDraft(draft.id)}
-									className="w-full rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-left transition-colors hover:bg-kumo-tint"
+									className="sketch-note w-full px-3 py-2 text-left transition-transform hover:-translate-y-0.5"
 								>
 									<div className="flex items-center gap-2">
 										<FileTextIcon size={14} className="shrink-0 text-kumo-subtle" />
@@ -123,20 +123,20 @@ export default function AgentWorkflowsPanel() {
 				</section>
 
 				<section className="space-y-2">
-					<h3 className="text-xs font-semibold uppercase tracking-wide text-kumo-subtle">
+					<h3 className="swiss-label">
 						Triage health
 					</h3>
 					<div className="grid grid-cols-2 gap-2">
-						<div className="rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2">
-							<div className="text-[11px] uppercase text-kumo-subtle">
+						<div className="surface-card px-3 py-2">
+							<div className="swiss-label">
 								Failed
 							</div>
 							<div className="text-lg font-semibold text-kumo-default">
 								{triageStatus?.error ?? "-"}
 							</div>
 						</div>
-						<div className="rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2">
-							<div className="text-[11px] uppercase text-kumo-subtle">
+						<div className="surface-card px-3 py-2">
+							<div className="swiss-label">
 								Unclassified
 							</div>
 							<div className="text-lg font-semibold text-kumo-default">
@@ -156,7 +156,7 @@ export default function AgentWorkflowsPanel() {
 				</section>
 
 				<section className="space-y-2">
-					<h3 className="text-xs font-semibold uppercase tracking-wide text-kumo-subtle">
+					<h3 className="swiss-label">
 						Suggested rules
 					</h3>
 					{suggestedRules.length === 0 ? (
@@ -166,7 +166,7 @@ export default function AgentWorkflowsPanel() {
 							{suggestedRules.map((rule) => (
 								<div
 									key={rule.id}
-									className="rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2"
+									className="surface-card px-3 py-2"
 								>
 									<div className="flex items-center gap-2">
 										<Badge variant="secondary">
@@ -207,7 +207,7 @@ export default function AgentWorkflowsPanel() {
 				</section>
 
 				<section className="space-y-2">
-					<h3 className="text-xs font-semibold uppercase tracking-wide text-kumo-subtle">
+					<h3 className="swiss-label">
 						Recent activity
 					</h3>
 					{recentActivity.length === 0 ? (
@@ -217,7 +217,7 @@ export default function AgentWorkflowsPanel() {
 							{recentActivity.map((event) => (
 								<div
 									key={event.id}
-									className="rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2"
+									className="surface-card px-3 py-2"
 								>
 									<div className="flex items-center gap-2">
 										<CheckCircleIcon size={14} className="shrink-0 text-kumo-success" />

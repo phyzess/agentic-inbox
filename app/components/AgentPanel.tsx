@@ -106,7 +106,7 @@ function ToolCallBadge({
 		state === "output-error";
 
 	return (
-		<div className="flex items-center gap-1.5 py-1 px-2 rounded bg-kumo-fill/50 text-xs">
+		<div className="surface-card flex items-center gap-1.5 px-2 py-1 text-xs">
 			<span className="text-kumo-brand">{info.icon}</span>
 			<span className="text-kumo-strong">{info.label}</span>
 			{isDone ? (
@@ -173,10 +173,10 @@ function MessageBubble({
 			className={`flex gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}
 		>
 			<div
-				className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+				className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
 					isUser
 						? "bg-kumo-brand text-kumo-inverse"
-						: "bg-kumo-fill text-kumo-default"
+						: "sketch-bubble text-kumo-default"
 				}`}
 			>
 				{isUser ? (
@@ -196,10 +196,10 @@ function MessageBubble({
 						return (
 							<div
 								key={key}
-								className={`rounded-lg px-3 py-2 text-[13px] leading-relaxed break-words overflow-wrap-anywhere ${
+								className={`px-3 py-2 text-[13px] leading-relaxed break-words overflow-wrap-anywhere ${
 									isUser
-										? "bg-kumo-brand text-kumo-inverse rounded-br-sm"
-										: "bg-kumo-elevated text-kumo-default border border-kumo-line rounded-bl-sm overflow-hidden"
+										? "rounded-lg rounded-br-sm bg-kumo-brand text-kumo-inverse shadow-[0_8px_20px_rgba(63,95,215,0.18)]"
+										: "sketch-bubble text-kumo-default overflow-hidden"
 								}`}
 							>
 								{isUser ? (
@@ -368,9 +368,9 @@ function AgentChatConnected({
 	];
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex flex-col h-full bg-kumo-base">
 			{/* Header */}
-			<div className="flex items-center justify-between px-3 py-1.5 border-b border-kumo-line shrink-0">
+			<div className="flex items-center justify-between px-3 py-2 border-b border-kumo-line shrink-0 bg-kumo-base/80">
 				<div className="flex items-center gap-2">
 					<Badge variant="beta">AI</Badge>
 					<span className="text-xs text-kumo-subtle">
@@ -402,14 +402,14 @@ function AgentChatConnected({
 			<div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4">
 				{messages.length === 0 ? (
 					<div className="flex flex-col items-center justify-center h-full gap-4">
-						<div className="flex h-12 w-12 items-center justify-center rounded-xl bg-kumo-brand/10">
+						<div className="sketch-bubble flex h-14 w-14 items-center justify-center">
 							<RobotIcon
 								size={24}
 								weight="duotone"
 								className="text-kumo-brand"
 							/>
 						</div>
-						<p className="text-xs text-kumo-subtle text-center leading-relaxed px-4">
+						<p className="max-w-[260px] text-center text-xs leading-relaxed text-kumo-subtle">
 							I can classify emails, explain labels, search conversations, and draft replies.
 						</p>
 						<div className="flex flex-col gap-1.5 w-full">
@@ -420,7 +420,7 @@ function AgentChatConnected({
 									onClick={() =>
 										sendMessage({ text: prompt })
 									}
-									className="text-left px-3 py-2 rounded-lg border border-kumo-line text-xs text-kumo-strong hover:bg-kumo-tint hover:border-kumo-fill-hover transition-colors cursor-pointer bg-transparent"
+									className="surface-card cursor-pointer px-3 py-2 text-left text-xs text-kumo-strong transition-transform hover:-translate-y-0.5 hover:border-kumo-brand/25"
 								>
 									{prompt}
 								</button>
@@ -479,10 +479,10 @@ function AgentChatConnected({
 						))}
 						{isStreaming && (
 							<div className="flex gap-2">
-								<div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-kumo-default">
+								<div className="sketch-bubble flex h-6 w-6 shrink-0 items-center justify-center text-kumo-default">
 									<RobotIcon size={12} weight="bold" />
 								</div>
-								<div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-kumo-elevated border border-kumo-line rounded-bl-sm">
+								<div className="sketch-bubble flex items-center gap-1.5 px-3 py-2">
 									<Loader size="sm" />
 									<span className="text-xs text-kumo-subtle">
 										Thinking...
@@ -495,7 +495,7 @@ function AgentChatConnected({
 			</div>
 
 			{/* Input */}
-			<div className="shrink-0 border-t border-kumo-line px-3 py-2">
+			<div className="shrink-0 border-t border-kumo-line bg-kumo-base/90 px-3 py-2">
 				{isStreaming ? (
 					<div className="flex justify-center">
 						<Button

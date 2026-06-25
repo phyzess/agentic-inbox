@@ -24,14 +24,14 @@ export default function MailboxSplitView({
 			<div
 				className={`flex flex-col min-w-0 shrink-0 ${
 					isPanelOpen
-						? "hidden md:flex md:w-[380px] md:border-r md:border-kumo-line"
+						? "hidden md:flex md:w-[400px] md:border-r md:border-kumo-line"
 						: "w-full"
 				}`}
 			>
 				{children}
 			</div>
 			{isPanelOpen && (
-				<div className="flex-1 flex flex-col min-w-0 overflow-hidden w-full md:w-auto">
+				<div className="app-panel flex-1 flex flex-col min-w-0 overflow-hidden w-full md:w-auto">
 					{isComposing && !selectedEmailId ? (
 						<ComposePanel />
 					) : isComposing && selectedEmailId ? (

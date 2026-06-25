@@ -55,13 +55,13 @@ export default function ReviewDraftsRoute() {
 	return (
 		<MailboxSplitView selectedEmailId={selectedEmailId} isComposing={isComposing}>
 			<div className="flex h-full flex-col">
-				<div className="border-b border-kumo-line px-4 py-3.5 shrink-0 md:px-5">
+				<div className="list-header shrink-0 px-4 py-3.5 md:px-5">
 					<div className="flex items-center gap-3">
-						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-kumo-fill text-kumo-brand">
+						<div className="sketch-bubble flex h-8 w-8 shrink-0 items-center justify-center text-kumo-brand">
 							<RobotIcon size={18} weight="duotone" />
 						</div>
 						<div className="min-w-0 flex-1">
-							<h1 className="truncate text-lg font-semibold text-kumo-default">
+							<h1 className="truncate text-lg font-bold text-kumo-default">
 								Draft review
 							</h1>
 							<p className="truncate text-sm text-kumo-subtle">
@@ -79,13 +79,15 @@ export default function ReviewDraftsRoute() {
 						</div>
 					) : drafts.length === 0 ? (
 						<div className="flex flex-col items-center justify-center px-6 py-24 text-center">
-							<FileTextIcon size={48} weight="thin" className="mb-4 text-kumo-subtle" />
-							<h3 className="mb-1.5 text-base font-semibold text-kumo-default">
-								No drafts to review
-							</h3>
-							<p className="max-w-sm text-sm text-kumo-subtle">
-								AI-generated and manually saved drafts will appear here before anything is sent.
-							</p>
+							<div className="sketch-note max-w-sm px-7 py-8">
+								<FileTextIcon size={44} weight="thin" className="mx-auto mb-4 text-kumo-subtle" />
+								<h3 className="mb-1.5 text-base font-bold text-kumo-default">
+									No drafts to review
+								</h3>
+								<p className="text-sm text-kumo-subtle">
+									AI-generated and manually saved drafts will appear here before anything is sent.
+								</p>
+							</div>
 						</div>
 					) : (
 						<div>
@@ -104,11 +106,11 @@ export default function ReviewDraftsRoute() {
 												selectEmail(draft.id);
 											}
 										}}
-										className={`group flex cursor-pointer items-center gap-3 border-b border-kumo-line px-4 py-3 text-left transition-colors md:px-5 ${
-											isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"
+										className={`mail-row group flex cursor-pointer items-center gap-3 px-4 py-3 text-left md:px-5 ${
+											isSelected ? "mail-row-active" : ""
 										}`}
 									>
-										<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-kumo-subtle">
+										<div className="sketch-bubble flex h-8 w-8 shrink-0 items-center justify-center text-kumo-subtle">
 											<PaperPlaneTiltIcon size={16} />
 										</div>
 										<div className="min-w-0 flex-1">

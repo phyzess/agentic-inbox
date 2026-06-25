@@ -47,8 +47,8 @@ export default function ComposePanel() {
 
 	return (
 		<div className="flex flex-col h-full bg-kumo-base">
-			<div className="flex items-center justify-between px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
-				<h2 className="text-base font-semibold text-kumo-default">
+			<div className="list-header flex items-center justify-between px-4 py-3 border-b border-kumo-line shrink-0 md:px-6">
+				<h2 className="text-base font-bold text-kumo-default">
 					{formTitle}
 				</h2>
 				<div className="flex items-center gap-1">
@@ -71,7 +71,7 @@ export default function ComposePanel() {
 				<div className="p-4 md:p-6 space-y-4">
 					{error && <Banner variant="error" text={error} />}
 
-					<div className="space-y-3">
+					<div className="surface-card space-y-3 px-3 py-3">
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
 								To
@@ -148,7 +148,7 @@ export default function ComposePanel() {
 						</div>
 					</div>
 
-					<div className="border border-kumo-line rounded-md overflow-hidden bg-kumo-base">
+					<div className="surface-raised overflow-hidden">
 						<RichTextEditor
 							value={body}
 							onChange={setBody}
@@ -165,7 +165,7 @@ export default function ComposePanel() {
 				</div>
 
 				{/* Footer actions */}
-				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
+				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-base/90 shrink-0 md:px-6">
 					<div className="flex items-center justify-between">
 						<Button
 							type="button"

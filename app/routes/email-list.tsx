@@ -531,7 +531,7 @@ export default function EmailListRoute() {
 			isComposing={isComposing}
 		>
 				{/* Folder header */}
-				<div className="border-b border-kumo-line px-4 py-3 shrink-0 md:px-5">
+				<div className="list-header border-b border-kumo-line px-4 py-3 shrink-0 md:px-5">
 					<div className="flex flex-wrap items-center gap-2">
 						<Tooltip content={allVisibleSelected ? "Clear selection" : "Select visible"} side="bottom" asChild>
 							<Button
@@ -544,7 +544,7 @@ export default function EmailListRoute() {
 								disabled={emails.length === 0}
 							/>
 						</Tooltip>
-						<h1 className="min-w-0 flex-1 text-lg font-semibold text-kumo-default">
+						<h1 className="min-w-0 flex-1 text-lg font-bold text-kumo-default">
 							<span className="inline-flex min-w-0 items-center gap-2">
 								{labelId && <TagIcon size={18} className="shrink-0" />}
 								<span className="truncate">{folderName}</span>
@@ -783,14 +783,14 @@ export default function EmailListRoute() {
 												handleRowClick(email);
 											}
 										}}
-										className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-2.5 md:px-6 md:py-3 ${
+									className={`mail-row group flex items-center gap-3 w-full text-left cursor-pointer px-4 py-2.5 md:px-6 md:py-3 ${
 											isPanelOpen ? "md:px-4 md:py-2.5" : ""
-										} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
+										} ${isSelected ? "mail-row-active" : ""}`}
 									>
 										{/* Unread dot */}
 										<div className="w-2.5 shrink-0 flex justify-center">
 											{hasUnread(email) && (
-												<div className="h-2 w-2 rounded-full bg-kumo-brand" />
+												<div className="unread-dot h-2 w-2 rounded-full" />
 											)}
 										</div>
 

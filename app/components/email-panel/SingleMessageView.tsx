@@ -19,11 +19,11 @@ export default function SingleMessageView({
 	onPreviewImage,
 }: SingleMessageViewProps) {
 	return (
-		<div className="flex flex-col h-full">
-			<div className="px-4 py-4 border-b border-kumo-line md:px-6">
+		<div className="flex h-full flex-col">
+			<div className="border-b border-kumo-line bg-kumo-base/80 px-4 py-4 md:px-6">
 				<div className="flex items-center justify-between gap-3">
 					<div className="flex items-center gap-2.5 min-w-0">
-						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-xs font-bold text-kumo-default">
+						<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-kumo-fill text-xs font-bold text-kumo-default">
 							{email.sender.charAt(0).toUpperCase()}
 						</div>
 						<div className="min-w-0">

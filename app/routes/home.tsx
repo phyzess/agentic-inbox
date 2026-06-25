@@ -61,10 +61,10 @@ function SetupChecklist({ status }: { status?: SetupStatus }) {
 				: "Setup action required";
 
 	return (
-		<div className="mb-6 rounded-xl border border-kumo-line bg-kumo-base p-4">
+		<div className="surface-card mb-6 p-4">
 			<div className="mb-3 flex items-center justify-between gap-3">
 				<div>
-					<h2 className="text-sm font-semibold text-kumo-default">
+					<h2 className="text-sm font-bold text-kumo-default">
 						{title}
 					</h2>
 					<p className="mt-0.5 text-xs text-kumo-subtle">
@@ -215,7 +215,7 @@ export default function HomeRoute() {
 
 	return (
 		<div className="min-h-screen bg-kumo-recessed">
-			<div className="mx-auto max-w-2xl px-4 py-8 md:px-6 md:py-16">
+			<div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-16">
 				<div className="mb-8">
 					<div className="flex items-center justify-between">
 						<h1 className="text-2xl font-bold text-kumo-default">Mailboxes</h1>
@@ -243,16 +243,16 @@ export default function HomeRoute() {
 						<Loader size="lg" />
 					</div>
 				) : accounts.length > 0 ? (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
+					<div className="surface-card overflow-hidden">
 						{accounts.map((account, idx) => (
 							<RouterLink
 								key={account.id}
 								to={`/mailbox/${account.id}`}
-								className={`group flex items-center gap-4 px-5 py-4 no-underline transition-colors hover:bg-kumo-tint ${
+								className={`mail-row group flex items-center gap-4 px-5 py-4 no-underline ${
 									idx > 0 ? "border-t border-kumo-line" : ""
 								}`}
 							>
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-bold text-kumo-default">
+								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-kumo-fill text-sm font-bold text-kumo-default">
 									{account.name.charAt(0).toUpperCase()}
 								</div>
 								<div className="min-w-0 flex-1">
@@ -285,7 +285,7 @@ export default function HomeRoute() {
 						))}
 					</div>
 				) : (
-					<div className="rounded-xl border border-kumo-line bg-kumo-base py-16 px-6">
+					<div className="surface-card px-6 py-16">
 						<div className="flex flex-col items-center text-center">
 							<div className="mb-4">
 								<EnvelopeIcon

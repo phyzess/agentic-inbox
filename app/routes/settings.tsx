@@ -453,15 +453,15 @@ export default function SettingsRoute() {
 	const isCustomPrompt = agentPrompt.trim().length > 0;
 
 	return (
-		<div className="max-w-2xl px-4 py-4 md:px-8 md:py-6 h-full overflow-y-auto">
-			<h1 className="text-lg font-semibold text-kumo-default mb-6">Settings</h1>
+		<div className="h-full max-w-5xl overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+			<h1 className="mb-6 text-xl font-bold text-kumo-default">Settings</h1>
 
 			<div className="space-y-6">
 				{/* Health */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+				<div className="surface-card p-5">
 					<div className="mb-4 flex items-center justify-between gap-3">
 						<div>
-							<div className="text-sm font-medium text-kumo-default">
+							<div className="text-sm font-semibold text-kumo-default">
 								Mailbox health
 							</div>
 							<div className="mt-1 text-xs text-kumo-subtle">
@@ -478,7 +478,7 @@ export default function SettingsRoute() {
 								key={card.label}
 								className="rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2"
 							>
-								<div className="text-[11px] font-medium uppercase text-kumo-subtle">
+								<div className="swiss-label">
 									{card.label}
 								</div>
 								<div className="mt-1 text-lg font-semibold text-kumo-default">
@@ -493,8 +493,8 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Account */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
+				<div className="surface-card p-5">
+					<div className="swiss-label mb-4">
 						Account
 					</div>
 					<div className="space-y-3">
@@ -508,10 +508,10 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Security */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+				<div className="surface-card p-5">
 					<div className="mb-4 flex items-center gap-2">
 						<ShieldCheckIcon size={16} weight="duotone" className="text-kumo-subtle" />
-						<span className="text-sm font-medium text-kumo-default">
+						<span className="text-sm font-semibold text-kumo-default">
 							Access and agent permissions
 						</span>
 					</div>
@@ -609,8 +609,8 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Diagnostics */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
+				<div className="surface-card p-5">
+					<div className="swiss-label mb-4">
 						Diagnostics and data
 					</div>
 					<div className="space-y-3">
@@ -669,6 +669,7 @@ export default function SettingsRoute() {
 							</label>
 							<Input
 								type="file"
+								aria-label="Import mailbox JSON"
 								accept="application/json,.json"
 								className="mt-3"
 								disabled={isImporting}
@@ -685,11 +686,11 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Agent System Prompt */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+				<div className="surface-card p-5">
 					<div className="flex items-center justify-between mb-4">
 						<div className="flex items-center gap-2">
 							<RobotIcon size={16} weight="duotone" className="text-kumo-subtle" />
-							<span className="text-sm font-medium text-kumo-default">
+							<span className="text-sm font-semibold text-kumo-default">
 								AI Agent Prompt
 							</span>
 							{isCustomPrompt ? (
@@ -727,8 +728,8 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Smart classification */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
+				<div className="surface-card p-5">
+					<div className="swiss-label mb-4">
 						Smart Classification
 					</div>
 					<div className="space-y-3">
@@ -804,7 +805,7 @@ export default function SettingsRoute() {
 									key={label}
 									className="rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2"
 								>
-									<div className="text-[11px] font-medium uppercase text-kumo-subtle">
+									<div className="swiss-label">
 										{label}
 									</div>
 									<div className="mt-1 text-lg font-semibold text-kumo-default">
@@ -869,8 +870,8 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Rules */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
+				<div className="surface-card p-5">
+					<div className="swiss-label mb-4">
 						Rules
 					</div>
 					{visibleRules.length === 0 ? (
@@ -926,8 +927,8 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Bulk triage */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
+				<div className="surface-card p-5">
+					<div className="swiss-label mb-4">
 						Bulk Triage
 					</div>
 					<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -966,8 +967,8 @@ export default function SettingsRoute() {
 				</div>
 
 				{/* Activity */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
-					<div className="text-sm font-medium text-kumo-default mb-4">
+				<div className="surface-card p-5">
+					<div className="swiss-label mb-4">
 						Activity
 					</div>
 					{recentActivity.length === 0 ? (

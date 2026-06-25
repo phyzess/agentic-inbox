@@ -388,7 +388,7 @@ export default function SearchResultsRoute() {
 			isComposing={isComposing}
 		>
 			<>
-				<div className="border-b border-kumo-line px-4 py-3 shrink-0 md:px-5">
+				<div className="list-header border-b border-kumo-line px-4 py-3 shrink-0 md:px-5">
 					<div className="flex flex-wrap items-center gap-2">
 						<Tooltip content="Back to inbox" side="bottom" asChild>
 							<Button
@@ -412,7 +412,7 @@ export default function SearchResultsRoute() {
 							/>
 						</Tooltip>
 						<div className="min-w-0 flex-1">
-							<h1 className="truncate text-lg font-semibold text-kumo-default">
+							<h1 className="truncate text-lg font-bold text-kumo-default">
 								Search Results
 							</h1>
 							{!isLoading && (
@@ -579,8 +579,8 @@ export default function SearchResultsRoute() {
 										? "Permanently delete this email?"
 										: undefined;
 							return (
-								<div key={email.id} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-2.5 md:px-5 md:py-3 ${isPanelOpen ? "md:px-4 md:py-2.5" : ""} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}>
-									<div className="w-2.5 shrink-0 flex justify-center">{hasUnread(email) && <div className="h-2 w-2 rounded-full bg-kumo-brand" />}</div>
+								<div key={email.id} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`mail-row group flex items-center gap-3 w-full text-left cursor-pointer px-4 py-2.5 md:px-5 md:py-3 ${isPanelOpen ? "md:px-4 md:py-2.5" : ""} ${isSelected ? "mail-row-active" : ""}`}>
+									<div className="w-2.5 shrink-0 flex justify-center">{hasUnread(email) && <div className="unread-dot h-2 w-2 rounded-full" />}</div>
 									<input
 										type="checkbox"
 										checked={selectedIds.has(email.id)}

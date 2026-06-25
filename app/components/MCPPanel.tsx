@@ -83,13 +83,13 @@ export default function MCPPanel() {
 	);
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex h-full flex-col bg-kumo-base">
 			{/* Content */}
-			<div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+			<div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
 				{/* Intro */}
 				<div className="space-y-2">
 					<div className="flex items-center gap-2">
-						<div className="flex h-10 w-10 items-center justify-center rounded-xl bg-kumo-brand/10">
+						<div className="sketch-bubble flex h-10 w-10 items-center justify-center">
 							<PlugsIcon
 								size={20}
 								weight="duotone"
@@ -97,7 +97,7 @@ export default function MCPPanel() {
 							/>
 						</div>
 						<div>
-							<h3 className="text-sm font-semibold text-kumo-default">
+							<h3 className="text-sm font-bold text-kumo-default">
 								Connect via MCP
 							</h3>
 							<p className="text-xs text-kumo-subtle">
@@ -115,14 +115,14 @@ export default function MCPPanel() {
 
 				{/* MCP URL */}
 				<div className="space-y-1.5">
-					<label className="text-xs font-medium text-kumo-strong block">
+					<label className="swiss-label block">
 						Server URL
 					</label>
 					<div className="relative group">
 						<div className="absolute right-1.5 top-1/2 -translate-y-1/2">
 							<CopyButton text={mcpUrl} />
 						</div>
-						<div className="bg-kumo-recessed text-kumo-default font-mono text-[11px] px-3 py-2.5 pr-10 rounded-lg border border-kumo-line break-all leading-relaxed">
+						<div className="break-all rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2.5 pr-10 font-mono text-[11px] leading-relaxed text-kumo-default">
 							{mcpUrl}
 						</div>
 					</div>
@@ -131,19 +131,19 @@ export default function MCPPanel() {
 				{/* Client config */}
 				<div className="space-y-1.5">
 					<div className="flex items-center justify-between">
-						<label className="text-xs font-medium text-kumo-strong block">
+						<label className="swiss-label block">
 							Client config
 						</label>
 						<CopyButton text={clientConfig} />
 					</div>
-					<pre className="max-h-36 overflow-auto rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-[11px] leading-relaxed text-kumo-default">
+					<pre className="max-h-36 overflow-auto rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2 text-[11px] leading-relaxed text-kumo-default">
 						{clientConfig}
 					</pre>
 				</div>
 
 				{/* Scope */}
-				<div className="rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2.5">
-					<div className="text-xs font-medium text-kumo-default">
+				<div className="rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2.5">
+					<div className="text-xs font-semibold text-kumo-default">
 						Permission scope
 					</div>
 					<p className="mt-1 text-xs leading-relaxed text-kumo-subtle">
@@ -153,10 +153,10 @@ export default function MCPPanel() {
 
 				{/* Available tools */}
 				<div className="space-y-2">
-					<h4 className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle px-0.5">
+					<h4 className="swiss-label px-0.5">
 						Available Tools
 					</h4>
-					<div className="border border-kumo-line rounded-lg divide-y divide-kumo-line">
+					<div className="surface-card divide-y divide-kumo-line">
 						{TOOLS.map((tool) => (
 							<div
 								key={tool.name}

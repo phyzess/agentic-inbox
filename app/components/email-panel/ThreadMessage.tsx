@@ -40,12 +40,12 @@ interface ThreadMessageProps {
 function Avatar({ isDraft, isSelf, sender }: { isDraft?: boolean; isSelf: boolean; sender: string }) {
 	return (
 		<div
-			className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+			className={`flex h-8 w-8 shrink-0 items-center justify-center text-xs font-bold ${
 				isDraft
-					? "bg-kumo-fill text-kumo-subtle"
+					? "sketch-bubble text-kumo-subtle"
 					: isSelf
-						? "bg-kumo-brand text-kumo-inverse"
-						: "bg-kumo-fill text-kumo-default"
+						? "rounded-md bg-kumo-brand text-kumo-inverse"
+						: "rounded-md bg-kumo-fill text-kumo-default"
 			}`}
 		>
 			{isDraft ? "D" : sender.charAt(0).toUpperCase()}
@@ -69,7 +69,11 @@ export default function ThreadMessage({
 	onPreviewImage,
 }: ThreadMessageProps) {
 	const isSelf = email.sender === mailboxEmail;
-	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""}`;
+	const containerClassName = isDraft
+		? "sketch-note mx-3 my-3"
+		: !isLast
+			? "border-b border-kumo-line"
+			: "";
 	const senderLabel = isDraft ? "Draft reply" : isSelf ? "You" : email.sender;
 
 	if (!isExpanded) {
@@ -78,7 +82,7 @@ export default function ThreadMessage({
 				<button
 					type="button"
 					onClick={onToggleExpand}
-					className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kumo-tint rounded-lg text-left"
+					className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-kumo-tint"
 				>
 					<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
 					<div className="flex-1 min-w-0">
@@ -111,7 +115,7 @@ export default function ThreadMessage({
 							className="shrink-0"
 							aria-label="Collapse message"
 						>
-							<div className="cursor-pointer hover:ring-2 hover:ring-kumo-brand/30 transition-shadow rounded-full">
+							<div className="cursor-pointer rounded-md transition-shadow hover:ring-2 hover:ring-kumo-brand/30">
 								<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
 							</div>
 						</button>

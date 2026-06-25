@@ -63,10 +63,10 @@ function FolderLink({
 			to={to}
 			onClick={onClick}
 			className={({ isActive }) =>
-				`flex items-center gap-3 py-2 px-3 rounded-md text-sm transition-colors ${
+				`nav-item flex items-center gap-3 py-2 px-3 rounded-md text-sm font-medium ${
 					isActive
-						? "bg-kumo-fill font-semibold text-kumo-default"
-						: "text-kumo-strong hover:bg-kumo-tint"
+						? "nav-item-active"
+						: ""
 				}`
 			}
 		>
@@ -203,7 +203,7 @@ export default function Sidebar() {
 	};
 
 	return (
-		<aside className="h-full w-64 bg-kumo-recessed flex flex-col shrink-0 border-r border-kumo-line">
+		<aside className="app-sidebar h-full w-64 flex flex-col shrink-0 border-r border-kumo-line">
 			{/* Back + identity */}
 			<div className="px-4 pt-4 pb-1">
 				<button
@@ -212,16 +212,16 @@ export default function Sidebar() {
 						navigate("/");
 						closeSidebar();
 					}}
-					className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 cursor-pointer bg-transparent border-0 p-0"
+					className="mb-3 flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors cursor-pointer bg-transparent border-0 p-0"
 				>
 					<CaretLeftIcon size={14} />
 					<span>Mailboxes</span>
 				</button>
-				<div className="px-1">
-					<div className="text-base font-semibold text-kumo-default truncate">
+				<div className="surface-card px-3 py-2.5">
+					<div className="text-sm font-semibold text-kumo-default truncate">
 						{displayName}
 					</div>
-					<div className="text-sm text-kumo-subtle truncate mt-0.5">
+					<div className="text-xs text-kumo-subtle truncate mt-0.5">
 						{currentMailbox?.email || mailboxId}
 					</div>
 				</div>
@@ -233,7 +233,7 @@ export default function Sidebar() {
 					variant="primary"
 					icon={<PencilSimpleIcon size={16} />}
 					onClick={handleComposeClick}
-					className="w-full"
+					className="w-full shadow-[0_10px_24px_rgba(63,95,215,0.22)]"
 				>
 					Compose
 				</Button>
@@ -244,10 +244,10 @@ export default function Sidebar() {
 					to={`/mailbox/${mailboxId}/review-drafts`}
 					onClick={handleNavClick}
 					className={({ isActive }) =>
-						`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+						`nav-item flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium ${
 							isActive
-								? "bg-kumo-fill font-semibold text-kumo-default"
-								: "text-kumo-strong hover:bg-kumo-tint"
+								? "nav-item-active"
+								: ""
 						}`
 					}
 				>
@@ -275,7 +275,7 @@ export default function Sidebar() {
 				{labels.length > 0 && (
 					<div className="pt-5">
 						<div className="px-3 mb-1.5">
-							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							<span className="swiss-label">
 								Smart Labels
 							</span>
 						</div>
@@ -302,7 +302,7 @@ export default function Sidebar() {
 				{customFolders.length > 0 && (
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
-							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							<span className="swiss-label">
 								Folders
 							</span>
 							<Tooltip content="New folder" asChild>
@@ -360,7 +360,7 @@ export default function Sidebar() {
 				{customFolders.length === 0 && (
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
-							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">
+							<span className="swiss-label">
 								Folders
 							</span>
 							<Tooltip content="New folder" asChild>

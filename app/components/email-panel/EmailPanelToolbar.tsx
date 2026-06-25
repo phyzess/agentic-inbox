@@ -73,7 +73,7 @@ export default function EmailPanelToolbar({
 	onDelete,
 }: EmailPanelToolbarProps) {
 	return (
-		<div className="flex items-center gap-1 px-3 py-2 border-b border-kumo-line shrink-0 md:px-4">
+		<div className="flex shrink-0 items-center gap-1 border-b border-kumo-line bg-kumo-base/85 px-3 py-2 backdrop-blur md:px-4">
 			<Button
 				variant="ghost"
 				shape="square"
@@ -275,8 +275,8 @@ function MoveToFolderMenu({ folders, onMove }: { folders: Folder[]; onMove: (id:
 				/>
 			</Tooltip>
 			{open && (
-				<div className="absolute top-full left-0 z-50 mt-1 min-w-[160px] rounded-lg border border-kumo-line bg-kumo-elevated shadow-lg py-1">
-					<div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle">Move to</div>
+				<div className="surface-raised absolute left-0 top-full z-50 mt-1 min-w-[160px] py-1">
+					<div className="swiss-label px-3 py-1.5">Move to</div>
 					<div className="h-px bg-kumo-line my-1" />
 					{folders.map((f) => (
 						<button

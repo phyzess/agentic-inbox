@@ -68,7 +68,7 @@ export default function Header() {
 	const isSettingsActive = location.pathname.includes("/settings");
 
 	return (
-		<header className="flex items-center gap-2 px-3 py-2.5 bg-kumo-base border-b border-kumo-line sticky top-0 z-10 md:px-5 md:gap-4">
+		<header className="app-header sticky top-0 z-10 flex items-center gap-2 border-b border-kumo-line px-3 py-2.5 md:px-5 md:gap-4">
 			{/* Hamburger menu - mobile only */}
 			<Button
 				variant="ghost"
@@ -82,7 +82,7 @@ export default function Header() {
 
 			{/* Search - full on desktop, collapsible on mobile */}
 			<div
-				className={`flex-1 max-w-lg transition-all flex items-center gap-1 ${
+				className={`flex-1 max-w-2xl transition-all flex items-center gap-1 ${
 					isSearchExpanded ? "flex" : "hidden md:flex"
 				}`}
 			>
@@ -110,8 +110,8 @@ export default function Header() {
 						</button>
 					)}
 					{isSearchHelpOpen && (
-						<div className="absolute left-0 right-0 top-full z-30 mt-1 rounded-lg border border-kumo-line bg-kumo-elevated p-2 shadow-lg">
-							<div className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-kumo-subtle">
+						<div className="surface-raised absolute left-0 right-0 top-full z-30 mt-2 p-2">
+							<div className="swiss-label mb-1 px-1">
 								Quick filters
 							</div>
 							<div className="flex flex-wrap gap-1.5">

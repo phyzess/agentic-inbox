@@ -45,16 +45,16 @@ export default function AgentSidebar() {
 	const [activeTab, setActiveTab] = useState<"agent" | "work" | "mcp">("agent");
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex flex-col h-full bg-kumo-base">
 			{/* Tab bar */}
-			<div className="flex items-center border-b border-kumo-line shrink-0">
+			<div className="agent-tabs flex items-center border-b border-kumo-line shrink-0">
 				<button
 					type="button"
 					onClick={() => setActiveTab("agent")}
-					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
+					className={`agent-tab flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-transparent cursor-pointer ${
 						activeTab === "agent"
-							? "border-kumo-brand text-kumo-default"
-							: "border-transparent text-kumo-subtle hover:text-kumo-default"
+							? "agent-tab-active"
+							: ""
 					}`}
 				>
 					<RobotIcon size={14} weight={activeTab === "agent" ? "fill" : "regular"} />
@@ -63,10 +63,10 @@ export default function AgentSidebar() {
 				<button
 					type="button"
 					onClick={() => setActiveTab("work")}
-					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
+					className={`agent-tab flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-transparent cursor-pointer ${
 						activeTab === "work"
-							? "border-kumo-brand text-kumo-default"
-							: "border-transparent text-kumo-subtle hover:text-kumo-default"
+							? "agent-tab-active"
+							: ""
 					}`}
 				>
 					<CheckCircleIcon size={14} weight={activeTab === "work" ? "fill" : "regular"} />
@@ -75,10 +75,10 @@ export default function AgentSidebar() {
 				<button
 					type="button"
 					onClick={() => setActiveTab("mcp")}
-					className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 bg-transparent cursor-pointer ${
+					className={`agent-tab flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-transparent cursor-pointer ${
 						activeTab === "mcp"
-							? "border-kumo-brand text-kumo-default"
-							: "border-transparent text-kumo-subtle hover:text-kumo-default"
+							? "agent-tab-active"
+							: ""
 					}`}
 				>
 					<PlugsIcon size={14} weight={activeTab === "mcp" ? "fill" : "regular"} />
