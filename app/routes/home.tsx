@@ -12,6 +12,7 @@ import {
 	useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
+	CaretDownIcon,
 	CheckCircleIcon,
 	EnvelopeIcon,
 	InfoIcon,
@@ -49,15 +50,48 @@ function SetupCheckIcon({ status }: { status: SetupCheck["status"] }) {
 	return <InfoIcon size={16} weight="fill" className="text-current" />;
 }
 
+function pluralizeCheck(count: number) {
+	return count === 1 ? "check" : "checks";
+}
+
+function SetupCheckCard({ check }: { check: SetupCheck }) {
+	return (
+		<div
+			className={`sketch-check-card sketch-check-card-${check.status} flex gap-3 px-4 py-3`}
+		>
+			<span
+				className={`sketch-status-dot sketch-status-${check.status} mt-0.5 shrink-0`}
+			>
+				<SetupCheckIcon status={check.status} />
+			</span>
+			<div className="min-w-0">
+				<div className="truncate text-base font-semibold text-kumo-default">
+					{check.label}
+				</div>
+				<div className="text-sm leading-snug text-kumo-subtle">
+					{check.detail}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function SetupChecklist({ status }: { status?: SetupStatus }) {
 	if (!status) return null;
 
+	const attentionChecks = status.checks.filter((check) => check.status !== "ok");
+	const completedChecks = status.checks.filter((check) => check.status === "ok");
 	const title =
-		status.status === "ready"
+		attentionChecks.length === 0
 			? "Setup ready"
-			: status.status === "needs_attention"
-				? "Setup needs attention"
-				: "Setup action required";
+			: status.status === "action_required"
+				? "Setup action required"
+				: "Setup needs attention";
+	const attentionSummary =
+		attentionChecks.length > 0
+			? `${attentionChecks.length} ${pluralizeCheck(attentionChecks.length)} to review`
+			: "Nothing needs review";
+	const completedSummary = `${completedChecks.length} ${pluralizeCheck(completedChecks.length)} complete`;
 
 	return (
 		<section className="refined-sketch-card mb-8 px-5 py-6 md:px-6">
@@ -67,32 +101,59 @@ function SetupChecklist({ status }: { status?: SetupStatus }) {
 						{title}
 					</h2>
 					<p className="mt-1 max-w-2xl text-sm leading-relaxed text-kumo-subtle">
-						Deployment checks for receiving, sending, AI, storage, and access.
+						{attentionSummary}. {completedSummary}.
 					</p>
 				</div>
 			</div>
-			<div className="grid gap-3 sm:grid-cols-2">
-				{status.checks.map((check) => (
-					<div
-						key={check.id}
-						className="sketch-check-card flex gap-3 px-4 py-3"
-					>
-						<span
-							className={`sketch-status-dot sketch-status-${check.status} mt-0.5 shrink-0`}
-						>
-							<SetupCheckIcon status={check.status} />
-						</span>
-						<div className="min-w-0">
-							<div className="truncate text-base font-semibold text-kumo-default">
-								{check.label}
-							</div>
-							<div className="text-sm leading-snug text-kumo-subtle">
-								{check.detail}
-							</div>
+			{attentionChecks.length > 0 ? (
+				<div className="grid gap-3 sm:grid-cols-2">
+					{attentionChecks.map((check) => (
+						<SetupCheckCard key={check.id} check={check} />
+					))}
+				</div>
+			) : (
+				<div className="sketch-check-ready flex gap-3 px-4 py-3">
+					<span className="sketch-status-dot sketch-status-ok mt-0.5 shrink-0">
+						<CheckCircleIcon size={16} weight="fill" className="text-current" />
+					</span>
+					<div className="min-w-0">
+						<div className="text-base font-semibold text-kumo-default">
+							All required checks are clear
+						</div>
+						<div className="text-sm leading-snug text-kumo-subtle">
+							Completed checks are grouped below for reference.
 						</div>
 					</div>
-				))}
-			</div>
+				</div>
+			)}
+			{completedChecks.length > 0 && (
+				<details className="sketch-completed-checks mt-4">
+					<summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+						<span className="sketch-status-dot sketch-status-ok shrink-0">
+							<CheckCircleIcon size={16} weight="fill" className="text-current" />
+						</span>
+						<span className="min-w-0 flex-1">
+							<span className="block text-sm font-semibold text-kumo-default">
+								Completed checks
+							</span>
+							<span className="block text-xs leading-snug text-kumo-subtle">
+								{completedSummary}
+							</span>
+						</span>
+						<CaretDownIcon
+							size={16}
+							weight="bold"
+							className="sketch-completed-caret shrink-0 text-kumo-subtle"
+							aria-hidden="true"
+						/>
+					</summary>
+					<div className="grid gap-3 px-4 pb-4 sm:grid-cols-2">
+						{completedChecks.map((check) => (
+							<SetupCheckCard key={check.id} check={check} />
+						))}
+					</div>
+				</details>
+			)}
 		</section>
 	);
 }
