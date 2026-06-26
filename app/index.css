@@ -23,6 +23,11 @@
     --inbox-signal: #d73324;
     --inbox-sketch-paper: #fdfbf7;
     --inbox-sketch-line: #2d2d2d;
+    --inbox-sketch-muted: #e5e0d8;
+    --inbox-sketch-blue: #2d5da1;
+    --inbox-sketch-red: #d73324;
+    --inbox-sketch-green: #057a55;
+    --inbox-sketch-amber: #9a5b00;
     --inbox-shadow-sm: 0 1px 2px rgba(31, 54, 86, 0.06);
     --inbox-shadow-md:
       0 18px 42px rgba(38, 67, 105, 0.1),
@@ -275,5 +280,298 @@ body {
   .sketch-title {
     font-family: var(--font-sketch);
     font-weight: 700;
+  }
+
+  .mailboxes-sketch-page {
+    min-height: 100dvh;
+    background:
+      linear-gradient(rgba(45, 93, 161, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(45, 93, 161, 0.03) 1px, transparent 1px),
+      radial-gradient(circle at 1px 1px, rgba(45, 45, 45, 0.065) 1px, transparent 0),
+      linear-gradient(180deg, #fdfbf7 0%, #f6f0e7 100%);
+    background-size: 36px 36px, 36px 36px, 18px 18px, auto;
+  }
+
+  .mailboxes-sketch-shell {
+    position: relative;
+  }
+
+  .mailboxes-sketch-shell::before {
+    position: absolute;
+    top: 76px;
+    right: -22px;
+    width: 122px;
+    height: 28px;
+    content: "";
+    pointer-events: none;
+    background: rgba(255, 232, 128, 0.55);
+    border: 1px solid rgba(45, 45, 45, 0.12);
+    border-radius: 3px;
+    transform: rotate(3deg);
+  }
+
+  .mailboxes-sketch-title {
+    font-family: var(--font-sketch);
+    font-size: clamp(2.5rem, 8vw, 3.85rem);
+    font-weight: 700;
+    line-height: 0.96;
+    letter-spacing: 0;
+    color: var(--inbox-sketch-line);
+  }
+
+  .sketch-domain-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0.25rem 0.7rem;
+    margin-top: 0.45rem;
+    font-family: var(--font-sketch);
+    font-size: 1.15rem;
+    color: rgba(45, 45, 45, 0.66);
+    background: rgba(255, 255, 255, 0.58);
+    border: 1px dashed rgba(45, 45, 45, 0.24);
+    border-radius: 18px 12px 19px 13px / 12px 20px 11px 18px;
+    transform: rotate(-0.4deg);
+  }
+
+  .sketch-primary-button {
+    font-family: var(--font-sketch);
+    font-weight: 700;
+    color: #ffffff !important;
+    background: var(--inbox-sketch-blue) !important;
+    border: 2px solid var(--inbox-sketch-line) !important;
+    border-radius: 999px 18px 999px 20px / 20px 999px 18px 999px !important;
+    box-shadow: 4px 4px 0 0 rgba(45, 45, 45, 0.92) !important;
+    transform: rotate(0.35deg);
+    transition:
+      background-color 140ms ease,
+      box-shadow 140ms ease,
+      transform 140ms ease;
+  }
+
+  .sketch-primary-button:hover {
+    background: #244e95 !important;
+    box-shadow: 2px 2px 0 0 rgba(45, 45, 45, 0.92) !important;
+    transform: translate(2px, 2px) rotate(-0.25deg);
+  }
+
+  .sketch-primary-button:active {
+    box-shadow: 0 0 0 0 rgba(45, 45, 45, 0.92) !important;
+    transform: translate(4px, 4px) rotate(-0.25deg);
+  }
+
+  .refined-sketch-card {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(253, 251, 247, 0.96)),
+      radial-gradient(var(--inbox-sketch-muted) 0.7px, transparent 0.7px);
+    background-size: auto, 18px 18px;
+    border: 2px solid var(--inbox-sketch-line);
+    border-radius: 24px 14px 26px 16px / 16px 28px 14px 24px;
+    box-shadow: 6px 6px 0 0 rgba(45, 45, 45, 0.88);
+  }
+
+  .refined-sketch-card::before {
+    position: absolute;
+    top: -10px;
+    left: 2.4rem;
+    width: 72px;
+    height: 18px;
+    content: "";
+    background: rgba(255, 232, 128, 0.7);
+    border: 1px solid rgba(45, 45, 45, 0.16);
+    border-radius: 3px;
+    transform: rotate(-2deg);
+  }
+
+  .sketch-section-title {
+    font-family: var(--font-sketch);
+    font-size: 1.45rem;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--inbox-sketch-line);
+  }
+
+  .sketch-check-card {
+    --sketch-tilt: -0.2deg;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.78);
+    border: 1.5px solid rgba(45, 45, 45, 0.24);
+    border-radius: 16px 10px 15px 12px / 12px 16px 10px 15px;
+    box-shadow: 2px 2px 0 0 rgba(45, 45, 45, 0.1);
+    transform: rotate(var(--sketch-tilt));
+    transition:
+      background-color 140ms ease,
+      border-color 140ms ease,
+      box-shadow 140ms ease,
+      transform 140ms ease;
+  }
+
+  .sketch-check-card:nth-child(2n) {
+    --sketch-tilt: 0.25deg;
+  }
+
+  .sketch-check-card:nth-child(3n) {
+    --sketch-tilt: -0.35deg;
+  }
+
+  .sketch-check-card:hover {
+    background: #ffffff;
+    border-color: rgba(45, 45, 45, 0.42);
+    box-shadow: 3px 3px 0 0 rgba(45, 45, 45, 0.16);
+    transform: translateY(-1px) rotate(0deg);
+  }
+
+  .sketch-status-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    color: var(--inbox-sketch-line);
+    background: #ffffff;
+    border: 1.5px solid currentColor;
+    border-radius: 16px 10px 15px 11px / 11px 15px 10px 16px;
+    box-shadow: 2px 2px 0 0 rgba(45, 45, 45, 0.12);
+  }
+
+  .sketch-status-ok {
+    color: var(--inbox-sketch-green);
+    background: #eef9f3;
+  }
+
+  .sketch-status-warning {
+    color: var(--inbox-sketch-amber);
+    background: #fff7db;
+  }
+
+  .sketch-status-error {
+    color: var(--inbox-sketch-red);
+    background: #fff0ee;
+  }
+
+  .sketch-status-unknown {
+    color: rgba(45, 45, 45, 0.58);
+    background: #f5f1e8;
+  }
+
+  .sketch-mailbox-list {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.92);
+    border: 2px solid var(--inbox-sketch-line);
+    border-radius: 20px 13px 23px 15px / 15px 23px 13px 20px;
+    box-shadow: 6px 6px 0 0 rgba(45, 45, 45, 0.86);
+  }
+
+  .sketch-mailbox-list::before {
+    position: absolute;
+    top: -1px;
+    right: 3rem;
+    width: 62px;
+    height: 16px;
+    content: "";
+    background: rgba(255, 232, 128, 0.66);
+    border: 1px solid rgba(45, 45, 45, 0.12);
+    transform: rotate(1.8deg);
+  }
+
+  .sketch-mailbox-row {
+    position: relative;
+    background:
+      linear-gradient(90deg, rgba(45, 93, 161, 0.06), transparent 18%),
+      rgba(255, 255, 255, 0.82);
+    border-bottom: 1.5px dashed rgba(45, 45, 45, 0.18);
+    transition:
+      background-color 140ms ease,
+      box-shadow 140ms ease,
+      transform 140ms ease;
+  }
+
+  .sketch-mailbox-row:last-child {
+    border-bottom: 0;
+  }
+
+  .sketch-mailbox-row:nth-child(even) {
+    background:
+      linear-gradient(90deg, rgba(215, 51, 36, 0.045), transparent 18%),
+      rgba(253, 251, 247, 0.92);
+  }
+
+  .sketch-mailbox-row:hover {
+    background: #fff9c4;
+    box-shadow: inset 5px 0 0 var(--inbox-sketch-blue);
+    transform: translate(1px, 1px);
+  }
+
+  .sketch-avatar {
+    font-family: var(--font-sketch);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--inbox-sketch-line);
+    background: var(--inbox-sketch-muted);
+    border: 2px solid rgba(45, 45, 45, 0.28);
+    border-radius: 16px 9px 14px 10px / 10px 16px 9px 14px;
+    box-shadow: 2px 2px 0 0 rgba(45, 45, 45, 0.16);
+  }
+
+  .sketch-icon-button {
+    color: var(--inbox-sketch-line) !important;
+    border: 1.5px solid transparent !important;
+    border-radius: 13px 9px 12px 10px / 10px 13px 9px 12px !important;
+    transition:
+      background-color 140ms ease,
+      border-color 140ms ease,
+      box-shadow 140ms ease,
+      transform 140ms ease;
+  }
+
+  .sketch-icon-button:hover {
+    background: #fff0ee !important;
+    border-color: rgba(45, 45, 45, 0.34) !important;
+    box-shadow: 2px 2px 0 0 rgba(45, 45, 45, 0.18) !important;
+    transform: translate(1px, 1px) rotate(-1deg);
+  }
+
+  .sketch-empty-card {
+    position: relative;
+    background:
+      radial-gradient(var(--inbox-sketch-muted) 0.7px, transparent 0.7px),
+      #ffffff;
+    background-size: 18px 18px, auto;
+    border: 2px dashed rgba(45, 45, 45, 0.42);
+    border-radius: 22px 12px 24px 14px / 14px 24px 12px 22px;
+    box-shadow: 5px 5px 0 0 rgba(45, 45, 45, 0.32);
+  }
+
+  .sketch-empty-icon {
+    background: #fff9c4;
+    border: 2px solid rgba(45, 45, 45, 0.34);
+    border-radius: 28px 18px 26px 16px / 18px 28px 16px 26px;
+    box-shadow: 3px 3px 0 0 rgba(45, 45, 45, 0.18);
+    transform: rotate(-2deg);
+  }
+
+  .sketch-dialog {
+    border: 2px solid var(--inbox-sketch-line) !important;
+    border-radius: 22px 13px 24px 15px / 15px 24px 13px 22px !important;
+    box-shadow: 8px 8px 0 0 rgba(45, 45, 45, 0.86) !important;
+  }
+
+  @media (max-width: 767px) {
+    .mailboxes-sketch-shell::before {
+      display: none;
+    }
+
+    .sketch-domain-label {
+      max-width: 100%;
+      font-size: 1rem;
+    }
+
+    .refined-sketch-card,
+    .sketch-mailbox-list,
+    .sketch-empty-card {
+      box-shadow: 4px 4px 0 0 rgba(45, 45, 45, 0.72);
+    }
   }
 }

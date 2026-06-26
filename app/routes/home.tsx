@@ -5,7 +5,6 @@
 import {
 	Button,
 	Dialog,
-	Empty,
 	Input,
 	Loader,
 	Select,
@@ -39,15 +38,15 @@ export function meta() {
 
 function SetupCheckIcon({ status }: { status: SetupCheck["status"] }) {
 	if (status === "ok") {
-		return <CheckCircleIcon size={16} weight="fill" className="text-kumo-success" />;
+		return <CheckCircleIcon size={16} weight="fill" className="text-current" />;
 	}
 	if (status === "error") {
-		return <XCircleIcon size={16} weight="fill" className="text-kumo-error" />;
+		return <XCircleIcon size={16} weight="fill" className="text-current" />;
 	}
 	if (status === "warning") {
-		return <WarningCircleIcon size={16} weight="fill" className="text-kumo-warning" />;
+		return <WarningCircleIcon size={16} weight="fill" className="text-current" />;
 	}
-	return <InfoIcon size={16} weight="fill" className="text-kumo-subtle" />;
+	return <InfoIcon size={16} weight="fill" className="text-current" />;
 }
 
 function SetupChecklist({ status }: { status?: SetupStatus }) {
@@ -61,38 +60,40 @@ function SetupChecklist({ status }: { status?: SetupStatus }) {
 				: "Setup action required";
 
 	return (
-		<div className="surface-card mb-6 p-4">
-			<div className="mb-3 flex items-center justify-between gap-3">
+		<section className="refined-sketch-card mb-8 px-5 py-6 md:px-6">
+			<div className="mb-5 flex items-start justify-between gap-3">
 				<div>
-					<h2 className="text-sm font-bold text-kumo-default">
+					<h2 className="sketch-section-title">
 						{title}
 					</h2>
-					<p className="mt-0.5 text-xs text-kumo-subtle">
+					<p className="mt-1 max-w-2xl text-sm leading-relaxed text-kumo-subtle">
 						Deployment checks for receiving, sending, AI, storage, and access.
 					</p>
 				</div>
 			</div>
-			<div className="grid gap-2 sm:grid-cols-2">
+			<div className="grid gap-3 sm:grid-cols-2">
 				{status.checks.map((check) => (
 					<div
 						key={check.id}
-						className="flex min-w-0 gap-2 rounded-md border border-kumo-line bg-kumo-recessed px-3 py-2"
+						className="sketch-check-card flex gap-3 px-4 py-3"
 					>
-						<span className="mt-0.5 shrink-0">
+						<span
+							className={`sketch-status-dot sketch-status-${check.status} mt-0.5 shrink-0`}
+						>
 							<SetupCheckIcon status={check.status} />
 						</span>
 						<div className="min-w-0">
-							<div className="truncate text-sm font-medium text-kumo-default">
+							<div className="truncate text-base font-semibold text-kumo-default">
 								{check.label}
 							</div>
-							<div className="text-xs leading-snug text-kumo-subtle">
+							<div className="text-sm leading-snug text-kumo-subtle">
 								{check.detail}
 							</div>
 						</div>
 					</div>
 				))}
 			</div>
-		</div>
+		</section>
 	);
 }
 
@@ -214,52 +215,53 @@ export default function HomeRoute() {
 	const isLoading = !configData;
 
 	return (
-		<div className="min-h-screen bg-kumo-recessed">
-			<div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-16">
-				<div className="mb-8">
-					<div className="flex items-center justify-between">
-						<h1 className="text-2xl font-bold text-kumo-default">Mailboxes</h1>
+		<div className="mailboxes-sketch-page">
+			<div className="mailboxes-sketch-shell mx-auto max-w-5xl px-4 py-8 md:px-8 md:py-16">
+				<header className="mb-10">
+					<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+						<div className="min-w-0">
+							<h1 className="mailboxes-sketch-title">Mailboxes</h1>
+							{domains.length > 0 && (
+								<p className="sketch-domain-label truncate">
+									{domains.join(", ")}
+								</p>
+							)}
+						</div>
 						{!isConfigured && (
 							<Button
 								variant="primary"
 								icon={<PlusIcon size={16} />}
+								className="sketch-primary-button w-fit"
 								onClick={() => setIsCreateOpen(true)}
 							>
 								New Mailbox
 							</Button>
 						)}
 					</div>
-					{domains.length > 0 && (
-						<p className="text-sm text-kumo-subtle mt-1">
-							{domains.join(", ")}
-						</p>
-					)}
-				</div>
+				</header>
 
 				<SetupChecklist status={setupStatus} />
 
 				{isLoading ? (
-					<div className="flex justify-center py-20">
+					<div className="refined-sketch-card flex justify-center px-6 py-20">
 						<Loader size="lg" />
 					</div>
 				) : accounts.length > 0 ? (
-					<div className="surface-card overflow-hidden">
-						{accounts.map((account, idx) => (
+					<div className="sketch-mailbox-list">
+						{accounts.map((account) => (
 							<RouterLink
 								key={account.id}
 								to={`/mailbox/${account.id}`}
-								className={`mail-row group flex items-center gap-4 px-5 py-4 no-underline ${
-									idx > 0 ? "border-t border-kumo-line" : ""
-								}`}
+								className="sketch-mailbox-row group flex items-center gap-4 px-5 py-5 no-underline md:px-6"
 							>
-								<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-kumo-fill text-sm font-bold text-kumo-default">
+								<div className="sketch-avatar flex h-12 w-12 shrink-0 items-center justify-center">
 									{account.name.charAt(0).toUpperCase()}
 								</div>
 								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium text-kumo-default truncate">
+									<div className="truncate text-base font-semibold text-kumo-default">
 										{account.name}
 									</div>
-									<div className="text-sm text-kumo-subtle">
+									<div className="truncate text-sm text-kumo-subtle">
 										{account.email}
 									</div>
 								</div>
@@ -269,6 +271,7 @@ export default function HomeRoute() {
 										size="sm"
 										shape="square"
 										icon={<TrashIcon size={16} />}
+										className="sketch-icon-button"
 										aria-label={`Delete mailbox ${account.email}`}
 										onClick={(e) => {
 											e.preventDefault();
@@ -285,19 +288,19 @@ export default function HomeRoute() {
 						))}
 					</div>
 				) : (
-					<div className="surface-card px-6 py-16">
+					<div className="sketch-empty-card px-6 py-16">
 						<div className="flex flex-col items-center text-center">
-							<div className="mb-4">
+							<div className="sketch-empty-icon mb-5 flex h-20 w-20 items-center justify-center">
 								<EnvelopeIcon
-									size={48}
+									size={44}
 									weight="thin"
-									className="text-kumo-subtle"
+									className="text-kumo-default"
 								/>
 							</div>
-							<h3 className="text-base font-semibold text-kumo-default mb-1.5">
+							<h3 className="sketch-section-title mb-2">
 								No mailboxes yet
 							</h3>
-							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
+							<p className="mb-6 max-w-sm text-sm leading-relaxed text-kumo-subtle">
 								{isConfigured
 									? "Your email routing is configured but no mailboxes have been created yet. They will appear here automatically."
 									: "Create a mailbox to start sending and receiving emails with your domain."}
@@ -306,6 +309,7 @@ export default function HomeRoute() {
 								<Button
 									variant="primary"
 									icon={<PlusIcon size={16} />}
+									className="sketch-primary-button"
 									onClick={() => setIsCreateOpen(true)}
 								>
 									Create Mailbox
@@ -318,8 +322,8 @@ export default function HomeRoute() {
 
 			{/* Create Dialog */}
 			<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-5">
+				<Dialog size="sm" className="sketch-dialog p-6">
+					<Dialog.Title className="sketch-section-title mb-5">
 						Create New Mailbox
 					</Dialog.Title>
 					<form onSubmit={handleCreate} className="space-y-4">
@@ -346,13 +350,13 @@ export default function HomeRoute() {
 								<span className="text-sm text-kumo-subtle">@</span>
 								{domains.length > 1 ? (
 									<div className="flex-1">
-							<Select
-								aria-label="Domain"
-								value={selectedDomain}
-								onValueChange={(value) => {
-									if (value) setSelectedDomain(value);
-								}}
-							>
+										<Select
+											aria-label="Domain"
+											value={selectedDomain}
+											onValueChange={(value) => {
+												if (value) setSelectedDomain(value);
+											}}
+										>
 											{domains.map((d) => (
 												<Select.Option key={d} value={d}>
 													{d}
@@ -386,6 +390,7 @@ export default function HomeRoute() {
 								type="submit"
 								variant="primary"
 								size="sm"
+								className="sketch-primary-button"
 								loading={isCreating}
 								disabled={!selectedDomain}
 							>
@@ -404,8 +409,8 @@ export default function HomeRoute() {
 					if (!open) setMailboxToDelete(null);
 				}}
 			>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-2">
+				<Dialog size="sm" className="sketch-dialog p-6">
+					<Dialog.Title className="sketch-section-title mb-2">
 						Delete Mailbox
 					</Dialog.Title>
 					<Dialog.Description className="text-kumo-subtle text-sm mb-5">
